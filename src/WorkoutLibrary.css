@@ -675,6 +675,230 @@
   background: #fef2f2;
 }
 
+.edit-workout-btn {
+  color: #059669;
+  background: transparent;
+}
+
+.edit-workout-btn:hover {
+  background: #f0fdf4;
+}
+
+/* Workout Completion Styles */
+.schedule-workout.completed {
+  background: #f0f9ff;
+  border-color: #0ea5e9;
+}
+
+.completed-badge {
+  font-size: 12px;
+  color: #059669;
+  background: #dcfce7;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 8px;
+  font-weight: 500;
+}
+
+.completion-info {
+  font-size: 12px;
+  color: #059669;
+  margin-top: 4px;
+  font-weight: 500;
+}
+
+/* Week Mileage Styles */
+.week-mileage {
+  display: flex;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  margin-bottom: 8px;
+}
+
+.mileage-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
+.mileage-field label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #64748b;
+  min-width: 40px;
+}
+
+.mileage-input {
+  width: 60px;
+  padding: 4px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 13px;
+  text-align: center;
+}
+
+.mileage-input:focus {
+  outline: none;
+  border-color: #7c3aed;
+  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.1);
+}
+
+.mileage-field span {
+  font-size: 12px;
+  color: #64748b;
+}
+
+/* Workout Edit Form */
+.workout-edit-form .form-field label input[type="checkbox"] {
+  margin-right: 8px;
+}
+
+/* Schedule Detail View */
+.schedule-detail-view {
+  margin-top: 16px;
+  padding: 16px;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+.detail-weeks-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: 16px;
+}
+
+.detail-week-card {
+  background: white;
+  border-radius: 8px;
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+}
+
+.detail-week-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.detail-week-header h4 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #581c87;
+  margin: 0;
+}
+
+.detail-week-header .week-date {
+  font-size: 14px;
+  color: #7c2d92;
+  font-weight: normal;
+}
+
+.detail-week-mileage {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border-radius: 6px;
+}
+
+.mileage-display {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
+.mileage-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #64748b;
+}
+
+.mileage-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.mileage-input.small {
+  width: 50px;
+  padding: 3px 6px;
+  font-size: 12px;
+}
+
+.detail-workouts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Schedule View Workout */
+.schedule-view-workout {
+  padding: 12px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.schedule-view-workout:hover {
+  border-color: #7c3aed;
+  background: #faf5ff;
+}
+
+.schedule-view-workout.completed {
+  background: #f0f9ff;
+  border-color: #0ea5e9;
+}
+
+.schedule-view-workout .workout-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.schedule-view-workout .workout-info {
+  flex: 1;
+}
+
+.schedule-view-workout .workout-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.schedule-view-workout .workout-nickname {
+  font-size: 13px;
+  font-weight: 600;
+  color: #581c87;
+}
+
+.schedule-view-workout .workout-name {
+  font-size: 12px;
+  color: #7c3aed;
+}
+
+.schedule-view-workout .completion-info {
+  font-size: 11px;
+  color: #059669;
+  margin-top: 4px;
+  font-weight: 500;
+}
+
+.schedule-view-workout .workout-actions {
+  display: flex;
+  align-items: center;
+  margin-left: 8px;
+}
+
 /* History View */
 .history-container {
   display: flex;

@@ -141,7 +141,9 @@ const WorkoutLibrary = () => {
     weeks: Array(12).fill(null).map((_, i) => ({
       id: `week-${i + 1}`,
       weekNumber: i + 1,
-      workouts: []
+      workouts: [],
+      mileageGoal: '',
+      actualMileage: ''
     }))
   });
 
@@ -184,6 +186,10 @@ const WorkoutLibrary = () => {
   const [expandedScheduleId, setExpandedScheduleId] = useState(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [draggedWorkout, setDraggedWorkout] = useState(null);
+  const [showWorkoutEdit, setShowWorkoutEdit] = useState(false);
+  const [editingWorkout, setEditingWorkout] = useState(null);
+  const [editingWeekIndex, setEditingWeekIndex] = useState(null);
+  const [editingWorkoutIndex, setEditingWorkoutIndex] = useState(null);
   const [historyForm, setHistoryForm] = useState({
     workoutId: '',
     date: new Date().toISOString().split('T')[0],
@@ -287,12 +293,74 @@ const WorkoutLibrary = () => {
       weeks: Array(12).fill(null).map((_, i) => ({
         id: `week-${i + 1}`,
         weekNumber: i + 1,
-        workouts: []
+        workouts: [],
+        mileageGoal: '',
+        actualMileage: ''
       }))
     });
     setTrainingStartDate('');
     setCurrentScheduleName('');
     setEditingScheduleId(null);
+  };
+
+  const openWorkoutEdit = (workout, weekIndex, workoutIndex) => {
+    setEditingWorkout(workout);
+    setEditingWeekIndex(weekIndex);
+    setEditingWorkoutIndex(workoutIndex);
+    setShowWorkoutEdit(true);
+  };
+
+  const completeWorkout = (completionData) => {
+    const newEntry = {
+      id: `h${Date.now()}`,
+      workoutId: editingWorkout.originalId || editingWorkout.id,
+      date: completionData.date,
+      actualTimes: completionData.actualTimes.split(',').map(t => t.trim()).filter(t => t),
+      targetTimes: completionData.targetTimes.split(',').map(t => t.trim()).filter(t => t),
+      notes: completionData.notes,
+      weather: completionData.weather,
+      location: completionData.location,
+      rating: parseInt(completionData.rating)
+    };
+
+    setWorkoutHistory([...workoutHistory, newEntry]);
+
+    // Mark workout as completed in the appropriate schedule
+    if (activeTab === 'builder') {
+      // Update current schedule
+      const newSchedule = { ...schedule };
+      newSchedule.weeks[editingWeekIndex].workouts[editingWorkoutIndex] = {
+        ...editingWorkout,
+        completed: true,
+        completedDate: completionData.date,
+        completedNotes: completionData.notes
+      };
+      setSchedule(newSchedule);
+    } else if (activeTab === 'schedules' && expandedScheduleId) {
+      // Update saved schedule
+      const updatedSchedules = savedSchedules.map(s => {
+        if (s.id === expandedScheduleId) {
+          const newSavedSchedule = { ...s };
+          newSavedSchedule.schedule.weeks[editingWeekIndex].workouts[editingWorkoutIndex] = {
+            ...editingWorkout,
+            completed: true,
+            completedDate: completionData.date,
+            completedNotes: completionData.notes
+          };
+          return newSavedSchedule;
+        }
+        return s;
+      });
+      setSavedSchedules(updatedSchedules);
+    }
+
+    setShowWorkoutEdit(false);
+  };
+
+  const updateMileage = (weekIndex, field, value) => {
+    const newSchedule = { ...schedule };
+    newSchedule.weeks[weekIndex][field] = value;
+    setSchedule(newSchedule);
   };
 
   const removeWorkout = (weekIndex, workoutIndex) => {
@@ -450,15 +518,22 @@ const WorkoutLibrary = () => {
     const lastRun = history[0];
 
     return (
-      <div className="schedule-workout">
+      <div className={`schedule-workout ${workout.completed ? 'completed' : ''}`}>
         <div className="schedule-workout-content">
           <div className="workout-info">
             <div className="workout-title">
               <span className="workout-nickname">{workout.nickname}</span>
+              {workout.completed && <span className="completed-badge">✓ Completed</span>}
             </div>
             <div className="workout-name">{workout.name}</div>
             <div className="workout-description">{workout.description}</div>
-            {lastRun && (
+            {workout.completed && workout.completedDate && (
+              <div className="completion-info">
+                Completed: {new Date(workout.completedDate).toLocaleDateString()}
+                {workout.completedNotes && <span> - {workout.completedNotes}</span>}
+              </div>
+            )}
+            {!workout.completed && lastRun && (
               <div className="last-performance">
                 Last: {new Date(lastRun.date).toLocaleDateString()} ({lastRun.rating}/10)
               </div>
@@ -477,7 +552,7 @@ const WorkoutLibrary = () => {
               className="action-btn details-btn"
               title="View details"
             >
-              <Edit3 size={12} />
+              <Eye size={12} />
             </button>
             <button
               onClick={() => removeWorkout(weekIndex, workoutIndex)}
@@ -667,6 +742,22 @@ const WorkoutLibrary = () => {
                     </button>
                   </div>
 
+                  <div className="week-mileage">
+                    <div className="mileage-field">
+                      <label>Mileage Goal:</label>
+                      <input
+                        type="number"
+                        value={week.mileageGoal}
+                        onChange={(e) => updateMileage(weekIndex, 'mileageGoal', e.target.value)}
+                        placeholder="0"
+                        className="mileage-input"
+                        min="0"
+                        step="0.1"
+                      />
+                      <span>mi</span>
+                    </div>
+                  </div>
+
                   <div className="week-drop-zone">
                     {week.workouts.map((workout, workoutIndex) => (
                       <ScheduleWorkout
@@ -756,23 +847,21 @@ const WorkoutLibrary = () => {
                   </div>
 
                   {expandedScheduleId === savedSchedule.id && (
-                    <div className="schedule-preview">
-                      <div className="preview-weeks">
-                        {savedSchedule.schedule.weeks.filter(week => week.workouts.length > 0).map((week) => (
-                          <div key={week.id} className="preview-week">
-                            <h4>Week {week.weekNumber}</h4>
-                            <div className="preview-workouts">
-                              {week.workouts.map((workout, index) => (
-                                <div key={workout.id} className="preview-workout">
-                                  <span className="workout-nickname">{workout.nickname}</span>
-                                  <span className="workout-name">{workout.name}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                    <ScheduleDetailView
+                      schedule={savedSchedule}
+                      onWorkoutEdit={openWorkoutEdit}
+                      onMileageUpdate={(weekIndex, field, value) => {
+                        const updatedSchedules = savedSchedules.map(s => {
+                          if (s.id === savedSchedule.id) {
+                            const newSchedule = { ...s };
+                            newSchedule.schedule.weeks[weekIndex][field] = value;
+                            return newSchedule;
+                          }
+                          return s;
+                        });
+                        setSavedSchedules(updatedSchedules);
+                      }}
+                    />
                   )}
                 </div>
               ))}
@@ -1089,6 +1178,259 @@ const WorkoutLibrary = () => {
           </div>
         </div>
       )}
+
+      {showWorkoutEdit && editingWorkout && (
+        <div className="modal-overlay" onClick={() => setShowWorkoutEdit(false)}>
+          <div className="modal-content small-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h3>Edit Workout</h3>
+                <p>{editingWorkout.nickname} - {editingWorkout.name}</p>
+              </div>
+              <button
+                onClick={() => setShowWorkoutEdit(false)}
+                className="modal-close"
+              >
+                ✕
+              </button>
+            </div>
+
+            <WorkoutEditForm
+              workout={editingWorkout}
+              onComplete={completeWorkout}
+              onCancel={() => setShowWorkoutEdit(false)}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const WorkoutEditForm = ({ workout, onComplete, onCancel }) => {
+  const [completionForm, setCompletionForm] = useState({
+    date: new Date().toISOString().split('T')[0],
+    actualTimes: '',
+    targetTimes: '',
+    notes: '',
+    weather: '',
+    location: '',
+    rating: 5,
+    markCompleted: false
+  });
+
+  const updateForm = (field, value) => {
+    setCompletionForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleSubmit = () => {
+    if (completionForm.markCompleted) {
+      onComplete(completionForm);
+    } else {
+      // Just save notes without marking as completed
+      // This could be extended for other editing features
+      onCancel();
+    }
+  };
+
+  return (
+    <div className="workout-edit-form">
+      <div className="form-container">
+        <div className="form-field">
+          <label>
+            <input
+              type="checkbox"
+              checked={completionForm.markCompleted}
+              onChange={(e) => updateForm('markCompleted', e.target.checked)}
+            />
+            Mark as completed
+          </label>
+        </div>
+
+        {completionForm.markCompleted && (
+          <>
+            <div className="form-field">
+              <label>Completion Date</label>
+              <input
+                type="date"
+                value={completionForm.date}
+                onChange={(e) => updateForm('date', e.target.value)}
+              />
+            </div>
+
+            <div className="form-field">
+              <label>Actual Times (comma separated)</label>
+              <input
+                type="text"
+                value={completionForm.actualTimes}
+                onChange={(e) => updateForm('actualTimes', e.target.value)}
+                placeholder="e.g., 68.2, 67.9, 3:03.3"
+              />
+            </div>
+
+            <div className="form-field">
+              <label>Target Times (comma separated)</label>
+              <input
+                type="text"
+                value={completionForm.targetTimes}
+                onChange={(e) => updateForm('targetTimes', e.target.value)}
+                placeholder="e.g., 68, 68, 3:03"
+              />
+            </div>
+
+            <div className="form-field">
+              <label>Notes</label>
+              <textarea
+                value={completionForm.notes}
+                onChange={(e) => updateForm('notes', e.target.value)}
+                rows={3}
+                placeholder="How did the workout feel? Any observations..."
+              />
+            </div>
+
+            <div className="form-row">
+              <div className="form-field">
+                <label>Weather</label>
+                <input
+                  type="text"
+                  value={completionForm.weather}
+                  onChange={(e) => updateForm('weather', e.target.value)}
+                  placeholder="Cool, windy"
+                />
+              </div>
+
+              <div className="form-field">
+                <label>Location</label>
+                <input
+                  type="text"
+                  value={completionForm.location}
+                  onChange={(e) => updateForm('location', e.target.value)}
+                  placeholder="Track, Armory"
+                />
+              </div>
+            </div>
+
+            <div className="form-field">
+              <label>Rating (1-10)</label>
+              <input
+                type="number"
+                min="1"
+                max="10"
+                value={completionForm.rating}
+                onChange={(e) => updateForm('rating', e.target.value)}
+              />
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className="modal-footer">
+        <button onClick={onCancel} className="cancel-btn">
+          Cancel
+        </button>
+        <button
+          onClick={handleSubmit}
+          className="submit-btn"
+          disabled={completionForm.markCompleted && !completionForm.date}
+        >
+          {completionForm.markCompleted ? 'Complete Workout' : 'Save'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const ScheduleDetailView = ({ schedule, onWorkoutEdit, onMileageUpdate }) => {
+  const getWeekStartDate = (weekNumber) => {
+    if (!schedule.trainingStartDate) return '';
+    const startDate = new Date(schedule.trainingStartDate);
+    const weekStartDate = new Date(startDate);
+    weekStartDate.setDate(startDate.getDate() + ((weekNumber - 1) * 7));
+
+    return weekStartDate.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
+
+  return (
+    <div className="schedule-detail-view">
+      <div className="detail-weeks-grid">
+        {schedule.schedule.weeks.filter(week => week.workouts.length > 0 || week.mileageGoal || week.actualMileage).map((week, weekIndex) => (
+          <div key={week.id} className="detail-week-card">
+            <div className="detail-week-header">
+              <h4>Week {week.weekNumber}</h4>
+              {schedule.trainingStartDate && (
+                <span className="week-date">{getWeekStartDate(week.weekNumber)}</span>
+              )}
+            </div>
+
+            <div className="detail-week-mileage">
+              <div className="mileage-display">
+                <span className="mileage-label">Goal:</span>
+                <span className="mileage-value">{week.mileageGoal || '0'} mi</span>
+              </div>
+              <div className="mileage-field">
+                <label>Actual:</label>
+                <input
+                  type="number"
+                  value={week.actualMileage || ''}
+                  onChange={(e) => onMileageUpdate(weekIndex, 'actualMileage', e.target.value)}
+                  placeholder="0"
+                  className="mileage-input small"
+                  min="0"
+                  step="0.1"
+                />
+                <span>mi</span>
+              </div>
+            </div>
+
+            <div className="detail-workouts">
+              {week.workouts.map((workout, workoutIndex) => (
+                <ScheduleViewWorkout
+                  key={workout.id}
+                  workout={workout}
+                  weekIndex={weekIndex}
+                  workoutIndex={workoutIndex}
+                  onEdit={onWorkoutEdit}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const ScheduleViewWorkout = ({ workout, weekIndex, workoutIndex, onEdit }) => {
+  return (
+    <div className={`schedule-view-workout ${workout.completed ? 'completed' : ''}`}>
+      <div className="workout-content">
+        <div className="workout-info">
+          <div className="workout-title">
+            <span className="workout-nickname">{workout.nickname}</span>
+            {workout.completed && <span className="completed-badge">✓ Completed</span>}
+          </div>
+          <div className="workout-name">{workout.name}</div>
+          {workout.completed && workout.completedDate && (
+            <div className="completion-info">
+              Completed: {new Date(workout.completedDate).toLocaleDateString()}
+              {workout.completedNotes && <span> - {workout.completedNotes}</span>}
+            </div>
+          )}
+        </div>
+        <div className="workout-actions">
+          <button
+            onClick={() => onEdit(workout, weekIndex, workoutIndex)}
+            className="action-btn edit-workout-btn"
+            title="Edit workout"
+          >
+            <Edit3 size={12} />
+          </button>
+        </div>
+      </div>
     </div>
   );
 };
