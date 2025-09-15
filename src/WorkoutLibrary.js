@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Calendar, Download, Copy, Edit3, Trash2, Plus, Clock, BarChart3 } from 'lucide-react';
+import { Calendar, Download, Copy, Edit3, Trash2, Plus, Clock, BarChart3, Save, FileText, Eye, PanelLeft } from 'lucide-react';
 import './WorkoutLibrary.css';
 
 const WorkoutLibrary = () => {
@@ -174,6 +174,13 @@ const WorkoutLibrary = () => {
   const [activeTab, setActiveTab] = useState('library');
   const [selectedWorkout, setSelectedWorkout] = useState(null);
   const [showAddHistory, setShowAddHistory] = useState(false);
+  const [showWorkoutPicker, setShowWorkoutPicker] = useState(false);
+  const [selectedWeekIndex, setSelectedWeekIndex] = useState(null);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [scheduleName, setScheduleName] = useState('');
+  const [savedSchedules, setSavedSchedules] = useState([]);
+  const [editingScheduleId, setEditingScheduleId] = useState(null);
+  const [expandedScheduleId, setExpandedScheduleId] = useState(null);
   const [historyForm, setHistoryForm] = useState({
     workoutId: '',
     date: new Date().toISOString().split('T')[0],
@@ -185,32 +192,74 @@ const WorkoutLibrary = () => {
     rating: 5
   });
 
-  const [draggedWorkout, setDraggedWorkout] = useState(null);
-
-  const handleDragStart = (e, workout) => {
-    setDraggedWorkout(workout);
-    e.dataTransfer.effectAllowed = 'copy';
+  const openWorkoutPicker = (weekIndex) => {
+    setSelectedWeekIndex(weekIndex);
+    setShowWorkoutPicker(true);
   };
 
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
-  };
-
-  const handleDrop = (e, weekIndex) => {
-    e.preventDefault();
-    if (draggedWorkout) {
+  const addWorkoutToSchedule = (workout) => {
+    if (selectedWeekIndex !== null) {
       const newWorkout = {
-        ...draggedWorkout,
-        id: `${draggedWorkout.id}-${Date.now()}`,
-        originalId: draggedWorkout.id
+        ...workout,
+        id: `${workout.id}-${Date.now()}`,
+        originalId: workout.id
       };
 
       const newSchedule = { ...schedule };
-      newSchedule.weeks[weekIndex].workouts.push(newWorkout);
+      newSchedule.weeks[selectedWeekIndex].workouts.push(newWorkout);
       setSchedule(newSchedule);
-      setDraggedWorkout(null);
     }
+    setShowWorkoutPicker(false);
+    setSelectedWeekIndex(null);
+  };
+
+  const saveSchedule = () => {
+    const newSchedule = {
+      id: editingScheduleId || `schedule-${Date.now()}`,
+      name: scheduleName || `Training Schedule ${savedSchedules.length + 1}`,
+      schedule: { ...schedule },
+      trainingStartDate,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    if (editingScheduleId) {
+      // Update existing schedule
+      setSavedSchedules(prev => prev.map(s => s.id === editingScheduleId ? newSchedule : s));
+      setEditingScheduleId(null);
+    } else {
+      // Create new schedule
+      setSavedSchedules(prev => [...prev, newSchedule]);
+    }
+
+    setScheduleName('');
+    setShowSaveModal(false);
+  };
+
+  const loadSchedule = (savedSchedule) => {
+    setSchedule(savedSchedule.schedule);
+    setTrainingStartDate(savedSchedule.trainingStartDate);
+    setEditingScheduleId(savedSchedule.id);
+    setActiveTab('builder');
+  };
+
+  const deleteSchedule = (scheduleId) => {
+    setSavedSchedules(prev => prev.filter(s => s.id !== scheduleId));
+    if (editingScheduleId === scheduleId) {
+      setEditingScheduleId(null);
+    }
+  };
+
+  const clearSchedule = () => {
+    setSchedule({
+      weeks: Array(12).fill(null).map((_, i) => ({
+        id: `week-${i + 1}`,
+        weekNumber: i + 1,
+        workouts: []
+      }))
+    });
+    setTrainingStartDate('');
+    setEditingScheduleId(null);
   };
 
   const removeWorkout = (weekIndex, workoutIndex) => {
@@ -325,16 +374,22 @@ const WorkoutLibrary = () => {
     URL.revokeObjectURL(url);
   };
 
-  const LibraryWorkout = ({ workout }) => {
+  const LibraryWorkout = ({ workout, isPickerMode = false, onSelect = null }) => {
     const history = getWorkoutHistory(workout.id);
     const lastRun = history[0];
 
+    const handleClick = () => {
+      if (isPickerMode && onSelect) {
+        onSelect(workout);
+      } else {
+        setSelectedWorkout(workout);
+      }
+    };
+
     return (
       <div
-        draggable
-        onDragStart={(e) => handleDragStart(e, workout)}
-        className="library-workout"
-        onClick={() => setSelectedWorkout(workout)}
+        className={`library-workout ${isPickerMode ? 'picker-mode' : ''}`}
+        onClick={handleClick}
       >
         <div className="workout-header">
           {lastRun && (
@@ -419,7 +474,8 @@ const WorkoutLibrary = () => {
       <div className="tab-navigation">
         {[
           { id: 'library', label: 'Workout Library', icon: Calendar },
-          { id: 'schedule', label: 'Training Schedule', icon: BarChart3 },
+          { id: 'builder', label: 'Training Schedule Builder', icon: BarChart3 },
+          { id: 'schedules', label: 'Training Schedules', icon: FileText },
           { id: 'history', label: 'Workout History', icon: Clock }
         ].map(tab => {
           const Icon = tab.icon;
@@ -453,10 +509,10 @@ const WorkoutLibrary = () => {
         </div>
       )}
 
-      {activeTab === 'schedule' && (
+      {activeTab === 'builder' && (
         <div className="schedule-container">
           <div className="schedule-header">
-            <h2>Training Schedule</h2>
+            <h2>Training Schedule Builder</h2>
             <div className="schedule-controls">
               <div className="date-input-group">
                 <label>Training Start Date:</label>
@@ -467,14 +523,36 @@ const WorkoutLibrary = () => {
                   className="date-input"
                 />
               </div>
-              <button
-                onClick={exportToMarkdown}
-                className="export-btn"
-              >
-                <Download size={16} />
-                Export Markdown
-              </button>
+              <div className="builder-actions">
+                <button
+                  onClick={() => setShowSaveModal(true)}
+                  className="save-btn"
+                  disabled={schedule.weeks.every(week => week.workouts.length === 0)}
+                >
+                  <Save size={16} />
+                  {editingScheduleId ? 'Update Schedule' : 'Save Schedule'}
+                </button>
+                <button
+                  onClick={clearSchedule}
+                  className="clear-btn"
+                >
+                  Clear
+                </button>
+                <button
+                  onClick={exportToMarkdown}
+                  className="export-btn"
+                >
+                  <Download size={16} />
+                  Export Markdown
+                </button>
+              </div>
             </div>
+            {editingScheduleId && (
+              <div className="editing-indicator">
+                <Edit3 size={16} />
+                Editing: {savedSchedules.find(s => s.id === editingScheduleId)?.name}
+              </div>
+            )}
           </div>
 
           <div className="weeks-grid">
@@ -482,17 +560,24 @@ const WorkoutLibrary = () => {
               <div
                 key={week.id}
                 className="week-card"
-                onDragOver={handleDragOver}
-                onDrop={(e) => handleDrop(e, weekIndex)}
               >
-                <h3 className="week-title">
-                  Week {week.weekNumber}
-                  {trainingStartDate && (
-                    <span className="week-date">
-                      : {getWeekStartDate(week.weekNumber)}
-                    </span>
-                  )}
-                </h3>
+                <div className="week-header">
+                  <h3 className="week-title">
+                    Week {week.weekNumber}
+                    {trainingStartDate && (
+                      <span className="week-date">
+                        : {getWeekStartDate(week.weekNumber)}
+                      </span>
+                    )}
+                  </h3>
+                  <button
+                    onClick={() => openWorkoutPicker(weekIndex)}
+                    className="add-workout-btn"
+                    title="Add workout"
+                  >
+                    <Plus size={16} />
+                  </button>
+                </div>
 
                 <div className="week-drop-zone">
                   {week.workouts.map((workout, workoutIndex) => (
@@ -505,13 +590,105 @@ const WorkoutLibrary = () => {
                   ))}
                   {week.workouts.length === 0 && (
                     <div className="empty-week">
-                      Drop workouts here
+                      Click + to add workouts
                     </div>
                   )}
                 </div>
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {activeTab === 'schedules' && (
+        <div className="schedules-container">
+          <div className="schedules-header">
+            <h2>Training Schedules</h2>
+            <button
+              onClick={() => setActiveTab('builder')}
+              className="new-schedule-btn"
+            >
+              <Plus size={16} />
+              New Schedule
+            </button>
+          </div>
+
+          {savedSchedules.length === 0 ? (
+            <div className="empty-schedules">
+              <FileText size={48} />
+              <h3>No Saved Schedules</h3>
+              <p>Create your first training schedule in the Schedule Builder</p>
+              <button
+                onClick={() => setActiveTab('builder')}
+                className="get-started-btn"
+              >
+                Get Started
+              </button>
+            </div>
+          ) : (
+            <div className="schedules-grid">
+              {savedSchedules.map((savedSchedule) => (
+                <div key={savedSchedule.id} className="schedule-card">
+                  <div className="schedule-card-header">
+                    <h3>{savedSchedule.name}</h3>
+                    <div className="schedule-actions">
+                      <button
+                        onClick={() => setExpandedScheduleId(
+                          expandedScheduleId === savedSchedule.id ? null : savedSchedule.id
+                        )}
+                        className="action-btn view-btn"
+                        title="View schedule"
+                      >
+                        <Eye size={16} />
+                      </button>
+                      <button
+                        onClick={() => loadSchedule(savedSchedule)}
+                        className="action-btn edit-btn"
+                        title="Edit schedule"
+                      >
+                        <Edit3 size={16} />
+                      </button>
+                      <button
+                        onClick={() => deleteSchedule(savedSchedule.id)}
+                        className="action-btn delete-btn"
+                        title="Delete schedule"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="schedule-info">
+                    <p>Created: {new Date(savedSchedule.createdAt).toLocaleDateString()}</p>
+                    {savedSchedule.trainingStartDate && (
+                      <p>Start Date: {new Date(savedSchedule.trainingStartDate).toLocaleDateString()}</p>
+                    )}
+                    <p>Total Workouts: {savedSchedule.schedule.weeks.reduce((total, week) => total + week.workouts.length, 0)}</p>
+                  </div>
+
+                  {expandedScheduleId === savedSchedule.id && (
+                    <div className="schedule-preview">
+                      <div className="preview-weeks">
+                        {savedSchedule.schedule.weeks.filter(week => week.workouts.length > 0).map((week) => (
+                          <div key={week.id} className="preview-week">
+                            <h4>Week {week.weekNumber}</h4>
+                            <div className="preview-workouts">
+                              {week.workouts.map((workout, index) => (
+                                <div key={workout.id} className="preview-workout">
+                                  <span className="workout-nickname">{workout.nickname}</span>
+                                  <span className="workout-name">{workout.name}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -728,6 +905,96 @@ const WorkoutLibrary = () => {
                 className="submit-btn"
               >
                 Add Entry
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showWorkoutPicker && (
+        <div className="modal-overlay" onClick={() => setShowWorkoutPicker(false)}>
+          <div className="modal-content workout-picker-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Select Workout for Week {selectedWeekIndex !== null ? schedule.weeks[selectedWeekIndex].weekNumber : ''}</h3>
+              <button
+                onClick={() => setShowWorkoutPicker(false)}
+                className="modal-close"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="workout-picker-content">
+              {Object.values(workoutLibrary).map((category, categoryIndex) => (
+                <div key={categoryIndex} className="picker-category">
+                  <h4 className="picker-category-title">{category.name}</h4>
+                  <p className="picker-category-description">{category.description}</p>
+
+                  <div className="picker-workouts-grid">
+                    {category.workouts.map((workout) => (
+                      <LibraryWorkout
+                        key={workout.id}
+                        workout={workout}
+                        isPickerMode={true}
+                        onSelect={addWorkoutToSchedule}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSaveModal && (
+        <div className="modal-overlay" onClick={() => setShowSaveModal(false)}>
+          <div className="modal-content small-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>{editingScheduleId ? 'Update Schedule' : 'Save Training Schedule'}</h3>
+              <button
+                onClick={() => setShowSaveModal(false)}
+                className="modal-close"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="form-container">
+              <div className="form-field">
+                <label>Schedule Name</label>
+                <input
+                  type="text"
+                  value={scheduleName}
+                  onChange={(e) => setScheduleName(e.target.value)}
+                  placeholder="e.g., Eric's Fall Training Schedule"
+                  autoFocus
+                />
+              </div>
+
+              <div className="schedule-summary">
+                <h4>Schedule Summary:</h4>
+                <p>Total Weeks with Workouts: {schedule.weeks.filter(week => week.workouts.length > 0).length}</p>
+                <p>Total Workouts: {schedule.weeks.reduce((total, week) => total + week.workouts.length, 0)}</p>
+                {trainingStartDate && (
+                  <p>Start Date: {new Date(trainingStartDate).toLocaleDateString()}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button
+                onClick={() => setShowSaveModal(false)}
+                className="cancel-btn"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveSchedule}
+                className="submit-btn"
+              >
+                <Save size={16} />
+                {editingScheduleId ? 'Update' : 'Save'} Schedule
               </button>
             </div>
           </div>
