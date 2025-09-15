@@ -1,0 +1,15 @@
+{
+  "files": {
+    "main.css": "/mile-training/static/css/main.6c8197b6.css",
+    "main.js": "/mile-training/static/js/main.9b2ff80f.js",
+    "static/js/453.b595794c.chunk.js": "/mile-training/static/js/453.b595794c.chunk.js",
+    "index.html": "/mile-training/index.html",
+    "main.6c8197b6.css.map": "/mile-training/static/css/main.6c8197b6.css.map",
+    "main.9b2ff80f.js.map": "/mile-training/static/js/main.9b2ff80f.js.map",
+    "453.b595794c.chunk.js.map": "/mile-training/static/js/453.b595794c.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.6c8197b6.css",
+    "static/js/main.9b2ff80f.js"
+  ]
+}
