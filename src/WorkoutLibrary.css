@@ -178,10 +178,17 @@
 .schedule-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 24px;
   flex-wrap: wrap;
   gap: 16px;
+}
+
+.builder-header-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
 }
 
 .schedule-header h2 {
@@ -189,6 +196,38 @@
   font-weight: bold;
   color: #581c87;
   margin: 0;
+}
+
+.schedule-name-input-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.schedule-name-input-group label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #7c2d92;
+  white-space: nowrap;
+}
+
+.schedule-name-input {
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  min-width: 250px;
+  max-width: 400px;
+}
+
+.schedule-name-input:focus {
+  outline: none;
+  border-color: #7c3aed;
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
+}
+
+.schedule-name-input::placeholder {
+  color: #9ca3af;
 }
 
 .schedule-controls {

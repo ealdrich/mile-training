@@ -178,6 +178,7 @@ const WorkoutLibrary = () => {
   const [selectedWeekIndex, setSelectedWeekIndex] = useState(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [scheduleName, setScheduleName] = useState('');
+  const [currentScheduleName, setCurrentScheduleName] = useState('');
   const [savedSchedules, setSavedSchedules] = useState([]);
   const [editingScheduleId, setEditingScheduleId] = useState(null);
   const [expandedScheduleId, setExpandedScheduleId] = useState(null);
@@ -214,12 +215,13 @@ const WorkoutLibrary = () => {
   };
 
   const saveSchedule = () => {
+    const finalName = scheduleName || currentScheduleName || `Training Schedule ${savedSchedules.length + 1}`;
     const newSchedule = {
       id: editingScheduleId || `schedule-${Date.now()}`,
-      name: scheduleName || `Training Schedule ${savedSchedules.length + 1}`,
+      name: finalName,
       schedule: { ...schedule },
       trainingStartDate,
-      createdAt: new Date().toISOString(),
+      createdAt: editingScheduleId ? savedSchedules.find(s => s.id === editingScheduleId)?.createdAt : new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
 
@@ -232,6 +234,7 @@ const WorkoutLibrary = () => {
       setSavedSchedules(prev => [...prev, newSchedule]);
     }
 
+    setCurrentScheduleName(finalName);
     setScheduleName('');
     setShowSaveModal(false);
   };
@@ -239,6 +242,7 @@ const WorkoutLibrary = () => {
   const loadSchedule = (savedSchedule) => {
     setSchedule(savedSchedule.schedule);
     setTrainingStartDate(savedSchedule.trainingStartDate);
+    setCurrentScheduleName(savedSchedule.name);
     setEditingScheduleId(savedSchedule.id);
     setActiveTab('builder');
   };
@@ -259,6 +263,7 @@ const WorkoutLibrary = () => {
       }))
     });
     setTrainingStartDate('');
+    setCurrentScheduleName('');
     setEditingScheduleId(null);
   };
 
@@ -512,7 +517,19 @@ const WorkoutLibrary = () => {
       {activeTab === 'builder' && (
         <div className="schedule-container">
           <div className="schedule-header">
-            <h2>Training Schedule Builder</h2>
+            <div className="builder-header-section">
+              <h2>Training Schedule Builder</h2>
+              <div className="schedule-name-input-group">
+                <label>Schedule Name:</label>
+                <input
+                  type="text"
+                  value={currentScheduleName}
+                  onChange={(e) => setCurrentScheduleName(e.target.value)}
+                  placeholder="e.g., Eric's Fall Training Schedule"
+                  className="schedule-name-input"
+                />
+              </div>
+            </div>
             <div className="schedule-controls">
               <div className="date-input-group">
                 <label>Training Start Date:</label>
@@ -525,7 +542,10 @@ const WorkoutLibrary = () => {
               </div>
               <div className="builder-actions">
                 <button
-                  onClick={() => setShowSaveModal(true)}
+                  onClick={() => {
+                    setScheduleName(currentScheduleName);
+                    setShowSaveModal(true);
+                  }}
                   className="save-btn"
                   disabled={schedule.weeks.every(week => week.workouts.length === 0)}
                 >
