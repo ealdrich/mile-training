@@ -182,6 +182,8 @@ const WorkoutLibrary = () => {
   const [savedSchedules, setSavedSchedules] = useState([]);
   const [editingScheduleId, setEditingScheduleId] = useState(null);
   const [expandedScheduleId, setExpandedScheduleId] = useState(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [draggedWorkout, setDraggedWorkout] = useState(null);
   const [historyForm, setHistoryForm] = useState({
     workoutId: '',
     date: new Date().toISOString().split('T')[0],
@@ -196,6 +198,32 @@ const WorkoutLibrary = () => {
   const openWorkoutPicker = (weekIndex) => {
     setSelectedWeekIndex(weekIndex);
     setShowWorkoutPicker(true);
+  };
+
+  const handleDragStart = (e, workout) => {
+    setDraggedWorkout(workout);
+    e.dataTransfer.effectAllowed = 'copy';
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  };
+
+  const handleDrop = (e, weekIndex) => {
+    e.preventDefault();
+    if (draggedWorkout) {
+      const newWorkout = {
+        ...draggedWorkout,
+        id: `${draggedWorkout.id}-${Date.now()}`,
+        originalId: draggedWorkout.id
+      };
+
+      const newSchedule = { ...schedule };
+      newSchedule.weeks[weekIndex].workouts.push(newWorkout);
+      setSchedule(newSchedule);
+      setDraggedWorkout(null);
+    }
   };
 
   const addWorkoutToSchedule = (workout) => {
@@ -379,7 +407,7 @@ const WorkoutLibrary = () => {
     URL.revokeObjectURL(url);
   };
 
-  const LibraryWorkout = ({ workout, isPickerMode = false, onSelect = null }) => {
+  const LibraryWorkout = ({ workout, isPickerMode = false, onSelect = null, isDraggable = false }) => {
     const history = getWorkoutHistory(workout.id);
     const lastRun = history[0];
 
@@ -393,7 +421,9 @@ const WorkoutLibrary = () => {
 
     return (
       <div
-        className={`library-workout ${isPickerMode ? 'picker-mode' : ''}`}
+        draggable={isDraggable}
+        onDragStart={isDraggable ? (e) => handleDragStart(e, workout) : undefined}
+        className={`library-workout ${isPickerMode ? 'picker-mode' : ''} ${isDraggable ? 'draggable' : ''}`}
         onClick={handleClick}
       >
         <div className="workout-header">
@@ -467,10 +497,13 @@ const WorkoutLibrary = () => {
       <div className="app-header">
         <div className="header-content">
           <div className="app-logo">
-            <span>GM</span>
+            <div className="logo-text">
+              <span className="logo-grubes">Grube's</span>
+              <span className="logo-goobs">GOOBS</span>
+            </div>
           </div>
           <div className="header-text">
-            <h1>Gruber's Mile Training</h1>
+            <h1>Mile Training with Dan Gruber</h1>
             <p>Build schedules, track workout history, and export to markdown. (17 total workouts)</p>
           </div>
         </div>
@@ -515,107 +548,143 @@ const WorkoutLibrary = () => {
       )}
 
       {activeTab === 'builder' && (
-        <div className="schedule-container">
-          <div className="schedule-header">
-            <div className="builder-header-section">
-              <h2>Training Schedule Builder</h2>
-              <div className="schedule-name-input-group">
-                <label>Schedule Name:</label>
-                <input
-                  type="text"
-                  value={currentScheduleName}
-                  onChange={(e) => setCurrentScheduleName(e.target.value)}
-                  placeholder="e.g., Eric's Fall Training Schedule"
-                  className="schedule-name-input"
-                />
-              </div>
+        <div className="builder-layout">
+          <div className={`workout-sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
+            <div className="sidebar-header">
+              <h3>Workout Library</h3>
+              <button
+                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                className="sidebar-toggle"
+                title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              >
+                <PanelLeft size={16} />
+              </button>
             </div>
-            <div className="schedule-controls">
-              <div className="date-input-group">
-                <label>Training Start Date:</label>
-                <input
-                  type="date"
-                  value={trainingStartDate}
-                  onChange={(e) => setTrainingStartDate(e.target.value)}
-                  className="date-input"
-                />
-              </div>
-              <div className="builder-actions">
-                <button
-                  onClick={() => {
-                    setScheduleName(currentScheduleName);
-                    setShowSaveModal(true);
-                  }}
-                  className="save-btn"
-                  disabled={schedule.weeks.every(week => week.workouts.length === 0)}
-                >
-                  <Save size={16} />
-                  {editingScheduleId ? 'Update Schedule' : 'Save Schedule'}
-                </button>
-                <button
-                  onClick={clearSchedule}
-                  className="clear-btn"
-                >
-                  Clear
-                </button>
-                <button
-                  onClick={exportToMarkdown}
-                  className="export-btn"
-                >
-                  <Download size={16} />
-                  Export Markdown
-                </button>
-              </div>
-            </div>
-            {editingScheduleId && (
-              <div className="editing-indicator">
-                <Edit3 size={16} />
-                Editing: {savedSchedules.find(s => s.id === editingScheduleId)?.name}
+
+            {!sidebarCollapsed && (
+              <div className="sidebar-content">
+                {Object.values(workoutLibrary).map((category, categoryIndex) => (
+                  <div key={categoryIndex} className="sidebar-category">
+                    <h4 className="sidebar-category-title">{category.name}</h4>
+                    <div className="sidebar-workouts">
+                      {category.workouts.map((workout) => (
+                        <LibraryWorkout
+                          key={workout.id}
+                          workout={workout}
+                          isDraggable={true}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
 
-          <div className="weeks-grid">
-            {schedule.weeks.map((week, weekIndex) => (
-              <div
-                key={week.id}
-                className="week-card"
-              >
-                <div className="week-header">
-                  <h3 className="week-title">
-                    Week {week.weekNumber}
-                    {trainingStartDate && (
-                      <span className="week-date">
-                        : {getWeekStartDate(week.weekNumber)}
-                      </span>
-                    )}
-                  </h3>
-                  <button
-                    onClick={() => openWorkoutPicker(weekIndex)}
-                    className="add-workout-btn"
-                    title="Add workout"
-                  >
-                    <Plus size={16} />
-                  </button>
-                </div>
-
-                <div className="week-drop-zone">
-                  {week.workouts.map((workout, workoutIndex) => (
-                    <ScheduleWorkout
-                      key={workout.id}
-                      workout={workout}
-                      weekIndex={weekIndex}
-                      workoutIndex={workoutIndex}
-                    />
-                  ))}
-                  {week.workouts.length === 0 && (
-                    <div className="empty-week">
-                      Click + to add workouts
-                    </div>
-                  )}
+          <div className="schedule-container">
+            <div className="schedule-header">
+              <div className="builder-header-section">
+                <h2>Training Schedule Builder</h2>
+                <div className="schedule-name-input-group">
+                  <label>Schedule Name:</label>
+                  <input
+                    type="text"
+                    value={currentScheduleName}
+                    onChange={(e) => setCurrentScheduleName(e.target.value)}
+                    placeholder="e.g., Eric's Fall Training Schedule"
+                    className="schedule-name-input"
+                  />
                 </div>
               </div>
-            ))}
+              <div className="schedule-controls">
+                <div className="date-input-group">
+                  <label>Training Start Date:</label>
+                  <input
+                    type="date"
+                    value={trainingStartDate}
+                    onChange={(e) => setTrainingStartDate(e.target.value)}
+                    className="date-input"
+                  />
+                </div>
+                <div className="builder-actions">
+                  <button
+                    onClick={() => {
+                      setScheduleName(currentScheduleName);
+                      setShowSaveModal(true);
+                    }}
+                    className="save-btn"
+                    disabled={schedule.weeks.every(week => week.workouts.length === 0)}
+                  >
+                    <Save size={16} />
+                    {editingScheduleId ? 'Update Schedule' : 'Save Schedule'}
+                  </button>
+                  <button
+                    onClick={clearSchedule}
+                    className="clear-btn"
+                  >
+                    Clear
+                  </button>
+                  <button
+                    onClick={exportToMarkdown}
+                    className="export-btn"
+                  >
+                    <Download size={16} />
+                    Export Markdown
+                  </button>
+                </div>
+              </div>
+              {editingScheduleId && (
+                <div className="editing-indicator">
+                  <Edit3 size={16} />
+                  Editing: {savedSchedules.find(s => s.id === editingScheduleId)?.name}
+                </div>
+              )}
+            </div>
+
+            <div className="weeks-grid">
+              {schedule.weeks.map((week, weekIndex) => (
+                <div
+                  key={week.id}
+                  className="week-card"
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, weekIndex)}
+                >
+                  <div className="week-header">
+                    <h3 className="week-title">
+                      Week {week.weekNumber}
+                      {trainingStartDate && (
+                        <span className="week-date">
+                          : {getWeekStartDate(week.weekNumber)}
+                        </span>
+                      )}
+                    </h3>
+                    <button
+                      onClick={() => openWorkoutPicker(weekIndex)}
+                      className="add-workout-btn"
+                      title="Add workout"
+                    >
+                      <Plus size={16} />
+                    </button>
+                  </div>
+
+                  <div className="week-drop-zone">
+                    {week.workouts.map((workout, workoutIndex) => (
+                      <ScheduleWorkout
+                        key={workout.id}
+                        workout={workout}
+                        weekIndex={weekIndex}
+                        workoutIndex={workoutIndex}
+                      />
+                    ))}
+                    {week.workouts.length === 0 && (
+                      <div className="empty-week">
+                        Drag workouts here or click +
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
