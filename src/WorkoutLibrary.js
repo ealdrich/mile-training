@@ -161,7 +161,7 @@ const WorkoutLibrary = () => {
     };
 
     loadData();
-  }, [getWorkoutHistory, getWorkoutLibrary, getTrainingSchedules]);
+  }, []);
 
   const openWorkoutPicker = (weekIndex) => {
     setSelectedWeekIndex(weekIndex);
@@ -245,7 +245,7 @@ const WorkoutLibrary = () => {
     try {
       if (editingScheduleId) {
         // Update existing schedule
-        const { data, error } = await updateTrainingSchedule(editingScheduleId, scheduleData);
+        const { error } = await updateTrainingSchedule(editingScheduleId, scheduleData);
         if (error) {
           console.error('Failed to update schedule:', error);
           alert('Failed to update schedule. Please try again.');
@@ -546,7 +546,7 @@ const WorkoutLibrary = () => {
     return null;
   };
 
-  const getWorkoutHistory = (workoutId) => {
+  const getWorkoutHistoryForWorkout = (workoutId) => {
     return workoutHistory.filter(h => h.workoutId === workoutId).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   };
 
@@ -664,7 +664,7 @@ const WorkoutLibrary = () => {
             markdown += `\n`;
           }
 
-          const history = getWorkoutHistory(workout.originalId || workout.id);
+          const history = getWorkoutHistoryForWorkout(workout.originalId || workout.id);
           if (history.length > 0) {
             markdown += `**Recent Performance:** Last run ${history[0].date} - Rating: ${history[0].rating}/10\n\n`;
           }
@@ -686,7 +686,7 @@ const WorkoutLibrary = () => {
   };
 
   const LibraryWorkout = ({ workout, isPickerMode = false, onSelect = null, isDraggable = false }) => {
-    const history = getWorkoutHistory(workout.id);
+    const history = getWorkoutHistoryForWorkout(workout.id);
     const lastRun = history[0];
 
     const handleInfoClick = (e) => {
@@ -744,7 +744,7 @@ const WorkoutLibrary = () => {
   };
 
   const ScheduleWorkout = ({ workout, weekIndex, workoutIndex }) => {
-    const history = getWorkoutHistory(workout.originalId || workout.id);
+    const history = getWorkoutHistoryForWorkout(workout.originalId || workout.id);
     const lastRun = history[0];
 
     return (
@@ -1209,14 +1209,14 @@ const WorkoutLibrary = () => {
 
               <div className="workout-history">
                 <h4>Recent History:</h4>
-                {getWorkoutHistory(selectedWorkout.id).slice(0, 3).map((entry) => (
+                {getWorkoutHistoryForWorkout(selectedWorkout.id).slice(0, 3).map((entry) => (
                   <div key={entry.id} className="history-item">
                     <div className="history-date">{new Date(entry.date).toLocaleDateString()}</div>
                     <div className="history-rating">Rating: {entry.rating}/10</div>
                     {entry.notes && <div className="history-notes">{entry.notes}</div>}
                   </div>
                 ))}
-                {getWorkoutHistory(selectedWorkout.id).length === 0 && (
+                {getWorkoutHistoryForWorkout(selectedWorkout.id).length === 0 && (
                   <p className="no-history">No history recorded yet</p>
                 )}
               </div>
