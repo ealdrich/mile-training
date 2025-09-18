@@ -1,141 +1,22 @@
-import React, { useState } from 'react';
-import { Calendar, Download, Copy, Edit3, Trash2, Plus, Clock, BarChart3, Save, FileText, Eye, PanelLeft } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Calendar, Download, Copy, Edit3, Trash2, Plus, Clock, BarChart3, Save, FileText, Eye, PanelLeft, GripVertical, Info } from 'lucide-react';
+import {
+  getWorkoutLibrary,
+  getTrainingSchedules,
+  saveTrainingSchedule,
+  updateTrainingSchedule,
+  deleteTrainingSchedule,
+  getWorkoutHistory,
+  saveWorkoutHistory
+} from './supabase.js';
 import './WorkoutLibrary.css';
 
 const WorkoutLibrary = () => {
-  const [workoutLibrary] = useState({
-    primary: {
-      name: "Primary/Core Workouts (Tuesdays)",
-      description: "Longer intervals, pace work, and endurance-focused sessions",
-      workouts: [
-        {
-          id: "p1",
-          name: "400-1000-400 Pyramid",
-          nickname: "The Pyramid 1000",
-          description: "2x 400m, 3x 1000m, 2x 400m",
-          rx: "400s @68-70s, 1000s @72-76s, 400s @68-70s w/ 400m recoveries"
-        },
-        {
-          id: "p2",
-          name: "200-400-600-400-200 Pyramid Sets",
-          nickname: "The Pyramid 600",
-          description: "2 x (200-400-600-400-200)",
-          rx: "200s @31-33s, 400s @68s, 600s @70-72s w/ 200m recoveries"
-        },
-        {
-          id: "p3",
-          name: "400m Alternating Recovery",
-          nickname: "The 400 Alternator",
-          description: "8-10 x 400m with alternating recovery",
-          rx: "Odds @68s w/ 100m recoveries, Evens @70s w/ 400m recoveries"
-        },
-        {
-          id: "p4",
-          name: "800-400-200-400-800 Sandwich",
-          nickname: "The V",
-          description: "2x800 @72, 1x400 @68, 1x200 @32, 1x400 @68, 2x800 @72",
-          rx: "800s @72s, 400s @68s, 200s @32s w/ 400m recoveries after 800s & 400s and 200m recoveries after 200s"
-        },
-        {
-          id: "p5",
-          name: "600-200 Couplets",
-          nickname: "Dan's Couplets",
-          description: "5 x (600-200)",
-          rx: "600s @70-72s, 200s @30-32s w/ 200m rec between, 400m rec between sets"
-        },
-        {
-          id: "p6",
-          name: "400-200-800-200-400",
-          nickname: "The W",
-          description: "2x400, 2x200, 2x800, 2x200, 2x400",
-          rx: "400s @66-68s, 200s @31-32s, 800s @72-75s w/ 200m rec (400m after 800s)"
-        },
-        {
-          id: "p7",
-          name: "600-400-200-100 Descending Ladder",
-          nickname: "The Descender",
-          description: "3x (600-400-200-100)",
-          rx: "600s @78s, 400s @76s, 200s @33s, 100s @16s w/ 200/400/300/400m recoveries"
-        },
-        {
-          id: "p8",
-          name: "400 @ Goal",
-          nickname: "Goal Pace Special",
-          description: "6x 400m @goal pace",
-          rx: "400s @64-67s (goal race pace) w/ 400m recoveries"
-        },
-        {
-          id: "p9",
-          name: "1000 @ Goal",
-          nickname: "1000 Hot",
-          description: "4x200, 1x1000, 4x150 one step",
-          rx: "200s @32s w/ 200m rec, 1000 @68s w/ 400m rec, 150s one step w/ 250m rec"
-        }
-      ]
-    },
-    secondary: {
-      name: "Secondary/Speed Workouts (Fridays)",
-      description: "Shorter, faster intervals focused on speed and neuromuscular power",
-      workouts: [
-        {
-          id: "s1",
-          name: "200m Repeats",
-          nickname: "My Little Delights",
-          description: "6-8 x 200m",
-          rx: "@28-32s w/ 600m recoveries - best possible average"
-        },
-        {
-          id: "s2",
-          name: "100m Strides",
-          nickname: "Hunger Builder",
-          description: "8 x 100m",
-          rx: "@12-14s w/ 300m recoveries - relaxed speed"
-        },
-        {
-          id: "s3",
-          name: "300-200-100 Descending Triplets",
-          nickname: "The Triplets",
-          description: "3 x (300-200-100)",
-          rx: "300s @48-50s, 200s @30-33s, 100s @13-15s w/ 500/600/700m recoveries"
-        },
-        {
-          id: "s4",
-          name: "150m One Step",
-          nickname: "One Steps",
-          description: "4-6 x 150m one step",
-          rx: "Relaxed acceleration to near-max w/ 250m recoveries"
-        },
-        {
-          id: "s5",
-          name: "400m Time Trial",
-          nickname: "The 400 TT",
-          description: "4 x 400m @best average",
-          rx: "@59-62s w/ 1200m recoveries - race simulation"
-        },
-        {
-          id: "s6",
-          name: "250m Repeats",
-          nickname: "The 250s",
-          description: "6 x 250m",
-          rx: "Fast effort w/ 650m recoveries"
-        },
-        {
-          id: "s7",
-          name: "200-400-200 Sandwich",
-          nickname: "400 All Out",
-          description: "4x200, 1x400, 4x200",
-          rx: "200s @ 31-32s, 400 @ 58-60s w/ 200m recoveries after 200s and 600-800m recovery after the 400"
-        },
-        {
-          id: "s8",
-          name: "300m Repeats",
-          nickname: "The 300s",
-          description: "6 x 300m",
-          rx: "@best possible average w/ 500m recoveries"
-        }
-      ]
-    }
+  const [workoutLibrary, setWorkoutLibrary] = useState({
+    primary: { name: "Primary/Core Workouts (Tuesdays)", description: "Longer intervals, pace work, and endurance-focused sessions", workouts: [] },
+    secondary: { name: "Secondary/Speed Workouts (Fridays)", description: "Shorter, faster intervals focused on speed and neuromuscular power", workouts: [] }
   });
+  const [loading, setLoading] = useState(true);
 
   const [schedule, setSchedule] = useState({
     weeks: Array(12).fill(null).map((_, i) => ({
@@ -148,30 +29,7 @@ const WorkoutLibrary = () => {
   });
 
   const [trainingStartDate, setTrainingStartDate] = useState('');
-  const [workoutHistory, setWorkoutHistory] = useState([
-    {
-      id: 'h1',
-      workoutId: 'p1',
-      date: '2024-10-15',
-      actualTimes: ['70.0', '69.0', '3:11.0', '3:10.0', '3:10.0', '66.0', '68.0'],
-      targetTimes: ['72', '72', '3:18', '3:18', '3:18', '72', '72'],
-      notes: 'This far exceeded expectations. First workout of 2024 training cycle - matched 2023 fitness levels.',
-      weather: 'Cool, calm',
-      location: 'Track',
-      rating: 9
-    },
-    {
-      id: 'h2',
-      workoutId: 's5',
-      date: '2024-12-20',
-      actualTimes: ['59.98', '61.48', '61.73', '60.93'],
-      targetTimes: ['61', '61', '61', '61'],
-      notes: 'Spiked up. Very happy with this given I had been pretty sick Tue/Wed/Thu. Sub-60 opener was a pleasant surprise!',
-      weather: 'Cool',
-      location: 'Track',
-      rating: 8
-    }
-  ]);
+  const [workoutHistory, setWorkoutHistory] = useState([]);
 
   const [activeTab, setActiveTab] = useState('library');
   const [selectedWorkout, setSelectedWorkout] = useState(null);
@@ -201,6 +59,104 @@ const WorkoutLibrary = () => {
     rating: 5
   });
 
+  // Load data from Supabase on component mount
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoading(true);
+
+        // Load workout library
+        const { data: workouts, error: workoutError } = await getWorkoutLibrary();
+        if (workoutError) {
+          console.error('Failed to load workout library:', workoutError);
+        } else {
+          // Group workouts by category
+          const primary = workouts.filter(w => w.category === 'primary');
+          const secondary = workouts.filter(w => w.category === 'secondary');
+
+          setWorkoutLibrary({
+            primary: {
+              name: "Primary/Core Workouts (Tuesdays)",
+              description: "Longer intervals, pace work, and endurance-focused sessions",
+              workouts: primary
+            },
+            secondary: {
+              name: "Secondary/Speed Workouts (Fridays)",
+              description: "Shorter, faster intervals focused on speed and neuromuscular power",
+              workouts: secondary
+            }
+          });
+        }
+
+        // Load workout history
+        const { data: history, error: historyError } = await getWorkoutHistory();
+        if (historyError) {
+          console.error('Failed to load workout history:', historyError);
+        } else {
+          // Transform Supabase data to match existing format
+          const transformedHistory = history.map(entry => ({
+            id: entry.id,
+            workoutId: entry.workout_id,
+            date: entry.date,
+            actualTimes: entry.actual_times || [],
+            targetTimes: entry.target_times || [],
+            notes: entry.notes || '',
+            weather: entry.weather || '',
+            location: entry.location || '',
+            rating: entry.rating || 5
+          }));
+          setWorkoutHistory(transformedHistory);
+        }
+
+        // Load saved schedules
+        const { data: schedules, error: schedulesError } = await getTrainingSchedules();
+        if (schedulesError) {
+          console.error('Failed to load schedules:', schedulesError);
+        } else {
+          // Transform Supabase schedules to match existing format
+          const transformedSchedules = schedules.map(schedule => ({
+            id: schedule.id,
+            name: schedule.name,
+            trainingStartDate: schedule.training_start_date,
+            createdAt: schedule.created_at,
+            updatedAt: schedule.updated_at,
+            schedule: {
+              weeks: Array(12).fill(null).map((_, i) => {
+                const weekNumber = i + 1;
+                const weekData = schedule.schedule_weeks?.find(w => w.week_number === weekNumber);
+                return {
+                  id: `week-${weekNumber}`,
+                  weekNumber,
+                  workouts: weekData?.schedule_workouts?.map(sw => ({
+                    id: `${sw.workout_id}-${Date.now()}-${Math.random()}`,
+                    originalId: sw.workout_id,
+                    name: sw.workout_library?.name || '',
+                    nickname: sw.workout_library?.nickname || '',
+                    description: sw.workout_library?.description || '',
+                    rx: sw.workout_library?.rx || '',
+                    completed: sw.completed || false,
+                    completedDate: sw.completed_date,
+                    completedNotes: sw.completed_notes
+                  })) || [],
+                  mileageGoal: weekData?.mileage_goal?.toString() || '',
+                  actualMileage: weekData?.actual_mileage?.toString() || ''
+                };
+              })
+            }
+          }));
+          setSavedSchedules(transformedSchedules);
+        }
+
+      } catch (err) {
+        console.error('Error loading data:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
+
   const openWorkoutPicker = (weekIndex) => {
     setSelectedWeekIndex(weekIndex);
     setShowWorkoutPicker(true);
@@ -209,6 +165,8 @@ const WorkoutLibrary = () => {
   const handleDragStart = (e, workout) => {
     setDraggedWorkout(workout);
     e.dataTransfer.effectAllowed = 'copy';
+    e.dataTransfer.setData('text/plain', JSON.stringify(workout));
+    e.dataTransfer.setData('application/json', JSON.stringify(workout));
   };
 
   const handleDragOver = (e) => {
@@ -218,18 +176,40 @@ const WorkoutLibrary = () => {
 
   const handleDrop = (e, weekIndex) => {
     e.preventDefault();
-    if (draggedWorkout) {
+
+    let workoutToDrop = draggedWorkout;
+
+    // Try to get from dataTransfer as primary source
+    try {
+      let workoutData = e.dataTransfer.getData('application/json');
+      if (!workoutData) {
+        workoutData = e.dataTransfer.getData('text/plain');
+      }
+      if (workoutData) {
+        workoutToDrop = JSON.parse(workoutData);
+      }
+    } catch (err) {
+      // Silent fallback
+    }
+
+    // Fallback to draggedWorkout state
+    if (!workoutToDrop) {
+      workoutToDrop = draggedWorkout;
+    }
+
+    if (workoutToDrop) {
       const newWorkout = {
-        ...draggedWorkout,
-        id: `${draggedWorkout.id}-${Date.now()}`,
-        originalId: draggedWorkout.id
+        ...workoutToDrop,
+        id: `${workoutToDrop.id}-${Date.now()}`,
+        originalId: workoutToDrop.id
       };
 
       const newSchedule = { ...schedule };
       newSchedule.weeks[weekIndex].workouts.push(newWorkout);
       setSchedule(newSchedule);
-      setDraggedWorkout(null);
     }
+
+    setDraggedWorkout(null);
   };
 
   const addWorkoutToSchedule = (workout) => {
@@ -248,29 +228,88 @@ const WorkoutLibrary = () => {
     setSelectedWeekIndex(null);
   };
 
-  const saveSchedule = () => {
+  const saveSchedule = async () => {
     const finalName = scheduleName || currentScheduleName || `Training Schedule ${savedSchedules.length + 1}`;
-    const newSchedule = {
-      id: editingScheduleId || `schedule-${Date.now()}`,
+    const scheduleData = {
       name: finalName,
-      schedule: { ...schedule },
       trainingStartDate,
-      createdAt: editingScheduleId ? savedSchedules.find(s => s.id === editingScheduleId)?.createdAt : new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      schedule: { ...schedule }
     };
 
-    if (editingScheduleId) {
-      // Update existing schedule
-      setSavedSchedules(prev => prev.map(s => s.id === editingScheduleId ? newSchedule : s));
-      setEditingScheduleId(null);
-    } else {
-      // Create new schedule
-      setSavedSchedules(prev => [...prev, newSchedule]);
-    }
+    try {
+      if (editingScheduleId) {
+        // Update existing schedule
+        const { data, error } = await updateTrainingSchedule(editingScheduleId, scheduleData);
+        if (error) {
+          console.error('Failed to update schedule:', error);
+          alert('Failed to update schedule. Please try again.');
+          return;
+        }
 
-    setCurrentScheduleName(finalName);
-    setScheduleName('');
-    setShowSaveModal(false);
+        // Refresh schedules from database
+        const { data: schedules, error: schedulesError } = await getTrainingSchedules();
+        if (!schedulesError) {
+          const transformedSchedules = schedules.map(schedule => ({
+            id: schedule.id,
+            name: schedule.name,
+            trainingStartDate: schedule.training_start_date,
+            createdAt: schedule.created_at,
+            updatedAt: schedule.updated_at,
+            schedule: {
+              weeks: Array(12).fill(null).map((_, i) => {
+                const weekNumber = i + 1;
+                const weekData = schedule.schedule_weeks?.find(w => w.week_number === weekNumber);
+                return {
+                  id: `week-${weekNumber}`,
+                  weekNumber,
+                  workouts: weekData?.schedule_workouts?.map(sw => ({
+                    id: `${sw.workout_id}-${Date.now()}-${Math.random()}`,
+                    originalId: sw.workout_id,
+                    name: sw.workout_library?.name || '',
+                    nickname: sw.workout_library?.nickname || '',
+                    description: sw.workout_library?.description || '',
+                    rx: sw.workout_library?.rx || '',
+                    completed: sw.completed || false,
+                    completedDate: sw.completed_date,
+                    completedNotes: sw.completed_notes
+                  })) || [],
+                  mileageGoal: weekData?.mileage_goal?.toString() || '',
+                  actualMileage: weekData?.actual_mileage?.toString() || ''
+                };
+              })
+            }
+          }));
+          setSavedSchedules(transformedSchedules);
+        }
+        setEditingScheduleId(null);
+      } else {
+        // Create new schedule
+        const { data, error } = await saveTrainingSchedule(scheduleData);
+        if (error) {
+          console.error('Failed to save schedule:', error);
+          alert('Failed to save schedule. Please try again.');
+          return;
+        }
+
+        // Add new schedule to local state
+        const newSchedule = {
+          id: data.id,
+          name: finalName,
+          trainingStartDate,
+          createdAt: data.created_at,
+          updatedAt: data.updated_at,
+          schedule: { ...schedule }
+        };
+        setSavedSchedules(prev => [...prev, newSchedule]);
+      }
+
+      setCurrentScheduleName(finalName);
+      setScheduleName('');
+      setShowSaveModal(false);
+    } catch (err) {
+      console.error('Error saving schedule:', err);
+      alert('Failed to save schedule. Please try again.');
+    }
   };
 
   const loadSchedule = (savedSchedule) => {
@@ -281,10 +320,22 @@ const WorkoutLibrary = () => {
     setActiveTab('builder');
   };
 
-  const deleteSchedule = (scheduleId) => {
-    setSavedSchedules(prev => prev.filter(s => s.id !== scheduleId));
-    if (editingScheduleId === scheduleId) {
-      setEditingScheduleId(null);
+  const deleteSchedule = async (scheduleId) => {
+    try {
+      const { error } = await deleteTrainingSchedule(scheduleId);
+      if (error) {
+        console.error('Failed to delete schedule:', error);
+        alert('Failed to delete schedule. Please try again.');
+        return;
+      }
+
+      setSavedSchedules(prev => prev.filter(s => s.id !== scheduleId));
+      if (editingScheduleId === scheduleId) {
+        setEditingScheduleId(null);
+      }
+    } catch (err) {
+      console.error('Error deleting schedule:', err);
+      alert('Failed to delete schedule. Please try again.');
     }
   };
 
@@ -310,9 +361,8 @@ const WorkoutLibrary = () => {
     setShowWorkoutEdit(true);
   };
 
-  const completeWorkout = (completionData) => {
+  const completeWorkout = async (completionData) => {
     const newEntry = {
-      id: `h${Date.now()}`,
       workoutId: editingWorkout.originalId || editingWorkout.id,
       date: completionData.date,
       actualTimes: completionData.actualTimes.split(',').map(t => t.trim()).filter(t => t),
@@ -323,38 +373,72 @@ const WorkoutLibrary = () => {
       rating: parseInt(completionData.rating)
     };
 
-    setWorkoutHistory([...workoutHistory, newEntry]);
+    try {
+      // Save workout history to Supabase
+      const { data, error } = await saveWorkoutHistory(newEntry);
+      if (error) {
+        console.error('Failed to save workout history:', error);
+        alert('Failed to save workout completion. Please try again.');
+        return;
+      }
 
-    // Mark workout as completed in the appropriate schedule
-    if (activeTab === 'builder') {
-      // Update current schedule
-      const newSchedule = { ...schedule };
-      newSchedule.weeks[editingWeekIndex].workouts[editingWorkoutIndex] = {
-        ...editingWorkout,
-        completed: true,
-        completedDate: completionData.date,
-        completedNotes: completionData.notes
+      // Add to local workout history
+      const transformedEntry = {
+        id: data[0].id,
+        workoutId: data[0].workout_id,
+        date: data[0].date,
+        actualTimes: data[0].actual_times || [],
+        targetTimes: data[0].target_times || [],
+        notes: data[0].notes || '',
+        weather: data[0].weather || '',
+        location: data[0].location || '',
+        rating: data[0].rating || 5
       };
-      setSchedule(newSchedule);
-    } else if (activeTab === 'schedules' && expandedScheduleId) {
-      // Update saved schedule
-      const updatedSchedules = savedSchedules.map(s => {
-        if (s.id === expandedScheduleId) {
-          const newSavedSchedule = { ...s };
-          newSavedSchedule.schedule.weeks[editingWeekIndex].workouts[editingWorkoutIndex] = {
-            ...editingWorkout,
-            completed: true,
-            completedDate: completionData.date,
-            completedNotes: completionData.notes
-          };
-          return newSavedSchedule;
-        }
-        return s;
-      });
-      setSavedSchedules(updatedSchedules);
-    }
+      setWorkoutHistory(prev => [transformedEntry, ...prev]);
 
-    setShowWorkoutEdit(false);
+      // Mark workout as completed in the appropriate schedule
+      if (activeTab === 'builder') {
+        // Update current schedule
+        const newSchedule = { ...schedule };
+        newSchedule.weeks[editingWeekIndex].workouts[editingWorkoutIndex] = {
+          ...editingWorkout,
+          completed: true,
+          completedDate: completionData.date,
+          completedNotes: completionData.notes
+        };
+        setSchedule(newSchedule);
+      } else if (activeTab === 'schedules' && expandedScheduleId) {
+        // Update saved schedule
+        const updatedSchedules = savedSchedules.map(s => {
+          if (s.id === expandedScheduleId) {
+            const newSavedSchedule = { ...s };
+            newSavedSchedule.schedule.weeks[editingWeekIndex].workouts[editingWorkoutIndex] = {
+              ...editingWorkout,
+              completed: true,
+              completedDate: completionData.date,
+              completedNotes: completionData.notes
+            };
+            return newSavedSchedule;
+          }
+          return s;
+        });
+        setSavedSchedules(updatedSchedules);
+
+        // Update the completion status in Supabase for saved schedules
+        // Note: This is a simplified approach - in a full implementation you'd want to update the specific schedule_workout
+        try {
+          await updateTrainingSchedule(expandedScheduleId, savedSchedules.find(s => s.id === expandedScheduleId));
+        } catch (updateError) {
+          console.error('Failed to update schedule completion status:', updateError);
+          // Don't block the UI, but log the error
+        }
+      }
+
+      setShowWorkoutEdit(false);
+    } catch (err) {
+      console.error('Error completing workout:', err);
+      alert('Failed to save workout completion. Please try again.');
+    }
   };
 
   const updateMileage = (weekIndex, field, value) => {
@@ -397,31 +481,55 @@ const WorkoutLibrary = () => {
     });
   };
 
-  const addWorkoutHistory = () => {
+  const addWorkoutHistory = async () => {
     const newEntry = {
-      id: `h${Date.now()}`,
       workoutId: historyForm.workoutId,
       date: historyForm.date,
-      actualTimes: historyForm.actualTimes.split(',').map(t => t.trim()),
-      targetTimes: historyForm.targetTimes.split(',').map(t => t.trim()),
+      actualTimes: historyForm.actualTimes.split(',').map(t => t.trim()).filter(t => t),
+      targetTimes: historyForm.targetTimes.split(',').map(t => t.trim()).filter(t => t),
       notes: historyForm.notes,
       weather: historyForm.weather,
       location: historyForm.location,
       rating: parseInt(historyForm.rating)
     };
 
-    setWorkoutHistory([...workoutHistory, newEntry]);
-    setHistoryForm({
-      workoutId: '',
-      date: new Date().toISOString().split('T')[0],
-      actualTimes: '',
-      targetTimes: '',
-      notes: '',
-      weather: '',
-      location: '',
-      rating: 5
-    });
-    setShowAddHistory(false);
+    try {
+      const { data, error } = await saveWorkoutHistory(newEntry);
+      if (error) {
+        console.error('Failed to save workout history:', error);
+        alert('Failed to save workout entry. Please try again.');
+        return;
+      }
+
+      // Add to local state with transformed data
+      const transformedEntry = {
+        id: data[0].id,
+        workoutId: data[0].workout_id,
+        date: data[0].date,
+        actualTimes: data[0].actual_times || [],
+        targetTimes: data[0].target_times || [],
+        notes: data[0].notes || '',
+        weather: data[0].weather || '',
+        location: data[0].location || '',
+        rating: data[0].rating || 5
+      };
+
+      setWorkoutHistory(prev => [transformedEntry, ...prev]);
+      setHistoryForm({
+        workoutId: '',
+        date: new Date().toISOString().split('T')[0],
+        actualTimes: '',
+        targetTimes: '',
+        notes: '',
+        weather: '',
+        location: '',
+        rating: 5
+      });
+      setShowAddHistory(false);
+    } catch (err) {
+      console.error('Error saving workout history:', err);
+      alert('Failed to save workout entry. Please try again.');
+    }
   };
 
   const findWorkoutById = (id) => {
@@ -436,23 +544,119 @@ const WorkoutLibrary = () => {
     return workoutHistory.filter(h => h.workoutId === workoutId).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   };
 
-  const exportToMarkdown = () => {
-    let markdown = "# Gruber's Mile Training Schedule\n\n";
+  const exportHistoryToMarkdown = () => {
+    let markdown = "# Workout History\n\n";
     markdown += `Generated on ${new Date().toLocaleDateString()}\n\n`;
 
-    schedule.weeks.forEach(week => {
-      if (week.workouts.length > 0) {
+    if (workoutHistory.length === 0) {
+      markdown += "No workout history recorded yet.\n";
+    } else {
+      const sortedHistory = [...workoutHistory].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      sortedHistory.forEach((entry) => {
+        const workout = findWorkoutById(entry.workoutId);
+        markdown += `## ${workout?.nickname || 'Unknown Workout'} - ${new Date(entry.date).toLocaleDateString()}\n\n`;
+
+        if (workout) {
+          markdown += `**Workout:** ${workout.name}\n`;
+          markdown += `**Description:** ${workout.description}\n`;
+          markdown += `**Rx:** ${workout.rx}\n\n`;
+        }
+
+        markdown += `**Date:** ${new Date(entry.date).toLocaleDateString()}\n`;
+        markdown += `**Rating:** ${entry.rating}/10\n`;
+
+        if (entry.actualTimes && entry.actualTimes.length > 0) {
+          markdown += `**Actual Times:** ${entry.actualTimes.join(', ')}\n`;
+        }
+
+        if (entry.targetTimes && entry.targetTimes.length > 0) {
+          markdown += `**Target Times:** ${entry.targetTimes.join(', ')}\n`;
+        }
+
+        if (entry.weather) {
+          markdown += `**Weather:** ${entry.weather}\n`;
+        }
+
+        if (entry.location) {
+          markdown += `**Location:** ${entry.location}\n`;
+        }
+
+        if (entry.notes) {
+          markdown += `**Notes:** ${entry.notes}\n`;
+        }
+
+        markdown += "\n---\n\n";
+      });
+    }
+
+    const blob = new Blob([markdown], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'workout-history.md';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const exportToMarkdown = (scheduleData = null, fileName = null) => {
+    // Use provided schedule or current builder schedule
+    const exportSchedule = scheduleData ? scheduleData.schedule : schedule;
+    const exportStartDate = scheduleData ? scheduleData.trainingStartDate : trainingStartDate;
+    const exportName = scheduleData ? scheduleData.name : (currentScheduleName || "Training Schedule");
+
+    let markdown = `# ${exportName}\n\n`;
+    markdown += `Generated on ${new Date().toLocaleDateString()}\n\n`;
+
+    if (exportStartDate) {
+      markdown += `**Training Start Date:** ${new Date(exportStartDate).toLocaleDateString()}\n\n`;
+    }
+
+    const getExportWeekStartDate = (weekNumber) => {
+      if (!exportStartDate) return '';
+      const startDate = new Date(exportStartDate);
+      const weekStartDate = new Date(startDate);
+      weekStartDate.setDate(startDate.getDate() + ((weekNumber - 1) * 7));
+      return weekStartDate.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      });
+    };
+
+    exportSchedule.weeks.forEach(week => {
+      if (week.workouts && week.workouts.length > 0) {
         markdown += `## Week ${week.weekNumber}`;
-        if (trainingStartDate) {
-          markdown += `: ${getWeekStartDate(week.weekNumber)}`;
+        if (exportStartDate) {
+          markdown += `: ${getExportWeekStartDate(week.weekNumber)}`;
         }
         markdown += `\n\n`;
+
+        if (week.mileageGoal) {
+          markdown += `**Mileage Goal:** ${week.mileageGoal} miles\n`;
+        }
+        if (week.actualMileage) {
+          markdown += `**Actual Mileage:** ${week.actualMileage} miles\n`;
+        }
+        if (week.mileageGoal || week.actualMileage) {
+          markdown += `\n`;
+        }
 
         week.workouts.forEach((workout, index) => {
           const day = index === 0 ? "Tuesday" : index === 1 ? "Friday" : `Day ${index + 1}`;
           markdown += `### ${day}: ${workout.nickname} (${workout.name})\n`;
           markdown += `**Description:** ${workout.description}\n\n`;
           markdown += `**Rx:** ${workout.rx}\n\n`;
+
+          if (workout.completed) {
+            markdown += `**Status:** ✅ Completed on ${new Date(workout.completedDate).toLocaleDateString()}\n`;
+            if (workout.completedNotes) {
+              markdown += `**Notes:** ${workout.completedNotes}\n`;
+            }
+            markdown += `\n`;
+          }
 
           const history = getWorkoutHistory(workout.originalId || workout.id);
           if (history.length > 0) {
@@ -468,7 +672,7 @@ const WorkoutLibrary = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'gruber-mile-training-schedule.md';
+    a.download = fileName || `${exportName.toLowerCase().replace(/[^a-z0-9]/g, '-')}-training-schedule.md`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -479,7 +683,8 @@ const WorkoutLibrary = () => {
     const history = getWorkoutHistory(workout.id);
     const lastRun = history[0];
 
-    const handleClick = () => {
+    const handleInfoClick = (e) => {
+      e.stopPropagation();
       if (isPickerMode && onSelect) {
         onSelect(workout);
       } else {
@@ -487,14 +692,33 @@ const WorkoutLibrary = () => {
       }
     };
 
+    const handlePickerClick = () => {
+      if (isPickerMode && onSelect) {
+        onSelect(workout);
+      }
+    };
+
+    const handleDragStartLocal = (e) => {
+      handleDragStart(e, workout);
+    };
+
     return (
       <div
         draggable={isDraggable}
-        onDragStart={isDraggable ? (e) => handleDragStart(e, workout) : undefined}
+        onDragStart={isDraggable ? handleDragStartLocal : undefined}
         className={`library-workout ${isPickerMode ? 'picker-mode' : ''} ${isDraggable ? 'draggable' : ''}`}
-        onClick={handleClick}
+        onClick={isPickerMode ? handlePickerClick : undefined}
       >
         <div className="workout-header">
+          {!isPickerMode && (
+            <div
+              className="info-icon"
+              onClick={handleInfoClick}
+              title="View workout details"
+            >
+              <Info size={16} />
+            </div>
+          )}
           {lastRun && (
             <span className="last-run-date">
               {new Date(lastRun.date).toLocaleDateString()}
@@ -567,15 +791,27 @@ const WorkoutLibrary = () => {
     );
   };
 
+  if (loading) {
+    return (
+      <div className="workout-app">
+        <div className="loading-container">
+          <div className="loading-spinner"></div>
+          <p>Loading workout data from Supabase...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="workout-app">
       <div className="app-header">
         <div className="header-content">
           <div className="app-logo">
-            <div className="logo-text">
-              <span className="logo-grubes">Grube's</span>
-              <span className="logo-goobs">GOOBS</span>
-            </div>
+            <img
+              src={`${process.env.PUBLIC_URL}/grubes_logo.png`}
+              alt="Grube's GOOBS"
+              className="logo-image"
+            />
           </div>
           <div className="header-text">
             <h1>Mile Training with Dan Gruber</h1>
@@ -822,6 +1058,13 @@ const WorkoutLibrary = () => {
                         <Eye size={16} />
                       </button>
                       <button
+                        onClick={() => exportToMarkdown(savedSchedule)}
+                        className="action-btn export-btn"
+                        title="Export to Markdown"
+                      >
+                        <Download size={16} />
+                      </button>
+                      <button
                         onClick={() => loadSchedule(savedSchedule)}
                         className="action-btn edit-btn"
                         title="Edit schedule"
@@ -874,13 +1117,23 @@ const WorkoutLibrary = () => {
         <div className="history-container">
           <div className="history-header">
             <h2>Workout History</h2>
-            <button
-              onClick={() => setShowAddHistory(true)}
-              className="add-entry-btn"
-            >
-              <Plus size={16} />
-              Add Entry
-            </button>
+            <div className="history-actions">
+              <button
+                onClick={exportHistoryToMarkdown}
+                className="export-history-btn"
+                disabled={workoutHistory.length === 0}
+              >
+                <Download size={16} />
+                Export to Markdown
+              </button>
+              <button
+                onClick={() => setShowAddHistory(true)}
+                className="add-entry-btn"
+              >
+                <Plus size={16} />
+                Add Entry
+              </button>
+            </div>
           </div>
 
           <div className="history-list">

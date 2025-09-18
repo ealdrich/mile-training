@@ -9,6 +9,155 @@
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
 }
 
+/* Loading State */
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 50vh;
+  text-align: center;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #e9e5ff;
+  border-top: 4px solid #7c3aed;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 16px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.loading-container p {
+  color: #7c3aed;
+  font-size: 16px;
+  margin: 0;
+}
+
+/* History Actions */
+.history-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.export-history-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: #7c3aed;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.export-history-btn:hover:not(:disabled) {
+  background: #6d28d9;
+}
+
+.export-history-btn:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+/* Drag and Drop Improvements */
+.draggable {
+  cursor: grab;
+}
+
+.draggable:active {
+  cursor: grabbing;
+}
+
+.draggable:hover {
+  transform: translateY(-2px);
+  transition: transform 0.2s;
+}
+
+.week-card {
+  transition: background-color 0.2s;
+}
+
+.week-card:hover {
+  background: rgba(124, 58, 237, 0.05);
+}
+
+/* Export button in schedule actions */
+.action-btn.export-btn {
+  background: #7c3aed;
+  color: white;
+}
+
+.action-btn.export-btn:hover {
+  background: #6d28d9;
+}
+
+/* Drag Handle */
+.drag-handle {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 4px;
+  cursor: grab;
+  color: #9ca3af;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.8);
+  transition: all 0.2s;
+  z-index: 10;
+}
+
+.drag-handle:hover {
+  color: #7c3aed;
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+/* Ensure library workouts have relative positioning for drag handle */
+.library-workout {
+  position: relative;
+}
+
+.library-workout.draggable:hover .drag-handle {
+  opacity: 1;
+}
+
+/* Info Icon */
+.info-icon {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 4px;
+  cursor: pointer;
+  color: #9ca3af;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.8);
+  transition: all 0.2s;
+  z-index: 10;
+  opacity: 0;
+}
+
+.info-icon:hover {
+  color: #7c3aed;
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.library-workout:hover .info-icon {
+  opacity: 1;
+}
+
 /* Header */
 .app-header {
   margin-bottom: 32px;
@@ -22,41 +171,18 @@
 }
 
 .app-logo {
-  width: 120px;
-  height: 80px;
-  background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%);
-  border-radius: 16px;
+  width: 160px;
+  height: 110px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
   transform: rotate(-8deg);
-  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.4);
-  border: 3px solid #fbbf24;
 }
 
-.logo-text {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  line-height: 1;
-}
-
-.logo-grubes {
-  font-family: 'Brush Script MT', cursive, sans-serif;
-  font-size: 16px;
-  font-weight: normal;
-  color: #fbbf24;
-  margin-bottom: -2px;
-  font-style: italic;
-}
-
-.logo-goobs {
-  font-family: 'Impact', 'Arial Black', sans-serif;
-  font-size: 20px;
-  font-weight: 900;
-  color: #fbbf24;
-  letter-spacing: 1px;
+.logo-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
   text-shadow: 2px 2px 0px rgba(0, 0, 0, 0.3);
 }
 
