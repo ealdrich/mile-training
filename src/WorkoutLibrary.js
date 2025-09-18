@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Calendar, Download, Copy, Edit3, Trash2, Plus, Clock, BarChart3, Save, FileText, Eye, PanelLeft, GripVertical, Info } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Calendar, Download, Copy, Edit3, Trash2, Plus, Clock, BarChart3, Save, FileText, Eye, PanelLeft, Info } from 'lucide-react';
 import {
   getWorkoutLibrary,
   getTrainingSchedules,
@@ -64,15 +64,17 @@ const WorkoutLibrary = () => {
     const loadData = async () => {
       try {
         setLoading(true);
+        console.log('Loading data from Supabase...');
 
         // Load workout library
         const { data: workouts, error: workoutError } = await getWorkoutLibrary();
         if (workoutError) {
           console.error('Failed to load workout library:', workoutError);
         } else {
+          console.log('Loaded workouts:', workouts?.length);
           // Group workouts by category
-          const primary = workouts.filter(w => w.category === 'primary');
-          const secondary = workouts.filter(w => w.category === 'secondary');
+          const primary = workouts?.filter(w => w.category === 'primary') || [];
+          const secondary = workouts?.filter(w => w.category === 'secondary') || [];
 
           setWorkoutLibrary({
             primary: {
@@ -93,8 +95,9 @@ const WorkoutLibrary = () => {
         if (historyError) {
           console.error('Failed to load workout history:', historyError);
         } else {
+          console.log('Loaded workout history:', history?.length);
           // Transform Supabase data to match existing format
-          const transformedHistory = history.map(entry => ({
+          const transformedHistory = (history || []).map(entry => ({
             id: entry.id,
             workoutId: entry.workout_id,
             date: entry.date,
@@ -113,8 +116,9 @@ const WorkoutLibrary = () => {
         if (schedulesError) {
           console.error('Failed to load schedules:', schedulesError);
         } else {
+          console.log('Loaded schedules:', schedules?.length);
           // Transform Supabase schedules to match existing format
-          const transformedSchedules = schedules.map(schedule => ({
+          const transformedSchedules = (schedules || []).map(schedule => ({
             id: schedule.id,
             name: schedule.name,
             trainingStartDate: schedule.training_start_date,
@@ -145,17 +149,19 @@ const WorkoutLibrary = () => {
             }
           }));
           setSavedSchedules(transformedSchedules);
+          console.log('Set saved schedules:', transformedSchedules.length);
         }
 
       } catch (err) {
         console.error('Error loading data:', err);
       } finally {
         setLoading(false);
+        console.log('Data loading complete');
       }
     };
 
     loadData();
-  }, []);
+  }, [getWorkoutHistory, getWorkoutLibrary, getTrainingSchedules]);
 
   const openWorkoutPicker = (weekIndex) => {
     setSelectedWeekIndex(weekIndex);
