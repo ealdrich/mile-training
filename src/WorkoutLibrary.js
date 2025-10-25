@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Download, Copy, Edit3, Trash2, Plus, Clock, BarChart3, Save, FileText, Eye, PanelLeft, Info } from 'lucide-react';
+import { Calendar, Download, Copy, Edit3, Trash2, Plus, Clock, BarChart3, Save, FileText, Eye, PanelLeft, Info, Share2, Users } from 'lucide-react';
 import {
   getWorkoutLibrary,
   getTrainingSchedules,
@@ -7,11 +7,21 @@ import {
   updateTrainingSchedule,
   deleteTrainingSchedule,
   getWorkoutHistory,
-  saveWorkoutHistory
+  saveWorkoutHistory,
+  updateWorkoutHistory,
+  createWorkout,
+  updateWorkout,
+  deleteWorkout,
+  getWorkoutVersions,
+  shareSchedule,
+  getScheduleShares,
+  removeScheduleShare,
+  getSharedSchedules,
+  checkSchedulePermissions
 } from './supabase.js';
 import './WorkoutLibrary.css';
 
-const WorkoutLibrary = () => {
+const WorkoutLibrary = ({ user }) => {
   const [workoutLibrary, setWorkoutLibrary] = useState({
     primary: { name: "Primary/Core Workouts (Tuesdays)", description: "Longer intervals, pace work, and endurance-focused sessions", workouts: [] },
     secondary: { name: "Secondary/Speed Workouts (Fridays)", description: "Shorter, faster intervals focused on speed and neuromuscular power", workouts: [] }
@@ -48,6 +58,24 @@ const WorkoutLibrary = () => {
   const [editingWorkout, setEditingWorkout] = useState(null);
   const [editingWeekIndex, setEditingWeekIndex] = useState(null);
   const [editingWorkoutIndex, setEditingWorkoutIndex] = useState(null);
+
+  // Workout Library editing states
+  const [showWorkoutLibraryEdit, setShowWorkoutLibraryEdit] = useState(false);
+  const [showCreateWorkout, setShowCreateWorkout] = useState(false);
+  const [editingLibraryWorkout, setEditingLibraryWorkout] = useState(null);
+  const [workoutVersions, setWorkoutVersions] = useState([]);
+  const [showWorkoutVersions, setShowWorkoutVersions] = useState(false);
+
+  // Completed workout editing states
+  const [showEditCompletedWorkout, setShowEditCompletedWorkout] = useState(false);
+  const [editingCompletedWorkout, setEditingCompletedWorkout] = useState(null);
+  const [editingHistoryEntry, setEditingHistoryEntry] = useState(null);
+
+  // Schedule sharing states
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [sharingSchedule, setSharingSchedule] = useState(null);
+  const [scheduleShares, setScheduleShares] = useState([]);
+  const [sharedSchedules, setSharedSchedules] = useState([]);
   const [historyForm, setHistoryForm] = useState({
     workoutId: '',
     date: new Date().toISOString().split('T')[0],
@@ -124,6 +152,7 @@ const WorkoutLibrary = () => {
             trainingStartDate: schedule.training_start_date,
             createdAt: schedule.created_at,
             updatedAt: schedule.updated_at,
+            isOwner: schedule.user_id === user?.id,
             schedule: {
               weeks: Array(12).fill(null).map((_, i) => {
                 const weekNumber = i + 1;
@@ -150,6 +179,50 @@ const WorkoutLibrary = () => {
           }));
           setSavedSchedules(transformedSchedules);
           console.log('Set saved schedules:', transformedSchedules.length);
+        }
+
+        // Load shared schedules
+        const { data: shared, error: sharedError } = await getSharedSchedules();
+        if (sharedError) {
+          console.error('Failed to load shared schedules:', sharedError);
+        } else {
+          console.log('Loaded shared schedules:', shared?.length);
+          // Transform shared schedules
+          const transformedShared = (shared || []).map(share => ({
+            id: share.training_schedules.id,
+            name: share.training_schedules.name,
+            trainingStartDate: share.training_schedules.training_start_date,
+            createdAt: share.training_schedules.created_at,
+            updatedAt: share.training_schedules.updated_at,
+            isOwner: false,
+            sharedBy: share.shared_by_user.email,
+            permissionLevel: share.permission_level,
+            schedule: {
+              weeks: Array(12).fill(null).map((_, i) => {
+                const weekNumber = i + 1;
+                const weekData = share.training_schedules.schedule_weeks?.find(w => w.week_number === weekNumber);
+                return {
+                  id: `week-${weekNumber}`,
+                  weekNumber,
+                  workouts: weekData?.schedule_workouts?.map(sw => ({
+                    id: `${sw.workout_id}-${Date.now()}-${Math.random()}`,
+                    originalId: sw.workout_id,
+                    name: sw.workout_library?.name || '',
+                    nickname: sw.workout_library?.nickname || '',
+                    description: sw.workout_library?.description || '',
+                    rx: sw.workout_library?.rx || '',
+                    completed: sw.completed || false,
+                    completedDate: sw.completed_date,
+                    completedNotes: sw.completed_notes
+                  })) || [],
+                  mileageGoal: weekData?.mileage_goal?.toString() || '',
+                  actualMileage: weekData?.actual_mileage?.toString() || ''
+                };
+              })
+            }
+          }));
+          setSharedSchedules(transformedShared);
+          console.log('Set shared schedules:', transformedShared.length);
         }
 
       } catch (err) {
@@ -550,6 +623,284 @@ const WorkoutLibrary = () => {
     return workoutHistory.filter(h => h.workoutId === workoutId).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   };
 
+  // Workout Library Management Functions
+  const openCreateWorkout = () => {
+    setShowCreateWorkout(true);
+  };
+
+  const openEditWorkout = (workout) => {
+    setEditingLibraryWorkout(workout);
+    setShowWorkoutLibraryEdit(true);
+  };
+
+  const handleCreateWorkout = async (workoutData) => {
+    try {
+      // Generate a unique ID for the custom workout
+      const customId = `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const newWorkout = {
+        ...workoutData,
+        id: customId
+      };
+
+      const { data, error } = await createWorkout(newWorkout);
+      if (error) {
+        console.error('Failed to create workout:', error);
+        alert('Failed to create workout. Please try again.');
+        return;
+      }
+
+      // Add to local state
+      const category = newWorkout.category;
+      setWorkoutLibrary(prev => ({
+        ...prev,
+        [category]: {
+          ...prev[category],
+          workouts: [...prev[category].workouts, { ...newWorkout, version: 1, is_custom: true }]
+        }
+      }));
+
+      setShowCreateWorkout(false);
+      console.log('Created workout successfully:', data);
+    } catch (err) {
+      console.error('Error creating workout:', err);
+      alert('Failed to create workout. Please try again.');
+    }
+  };
+
+  const handleEditWorkout = async (updates, editReason) => {
+    try {
+      if (!editingLibraryWorkout) return;
+
+      const { data, error } = await updateWorkout(editingLibraryWorkout.id, updates, editReason);
+      if (error) {
+        console.error('Failed to update workout:', error);
+        alert('Failed to update workout. Please try again.');
+        return;
+      }
+
+      // Update local state
+      const category = editingLibraryWorkout.category;
+      setWorkoutLibrary(prev => ({
+        ...prev,
+        [category]: {
+          ...prev[category],
+          workouts: prev[category].workouts.map(w =>
+            w.id === editingLibraryWorkout.id
+              ? { ...w, ...updates, version: (w.version || 1) + 1 }
+              : w
+          )
+        }
+      }));
+
+      setShowWorkoutLibraryEdit(false);
+      setEditingLibraryWorkout(null);
+      console.log('Updated workout successfully:', data);
+    } catch (err) {
+      console.error('Error updating workout:', err);
+      alert('Failed to update workout. Please try again.');
+    }
+  };
+
+  const handleDeleteWorkout = async (workout) => {
+    if (!window.confirm(`Are you sure you want to delete "${workout.nickname}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const { error } = await deleteWorkout(workout.id);
+      if (error) {
+        console.error('Failed to delete workout:', error);
+        if (error.message.includes('used in existing training schedules')) {
+          alert('Cannot delete this workout as it is used in existing training schedules.');
+        } else {
+          alert('Failed to delete workout. Please try again.');
+        }
+        return;
+      }
+
+      // Remove from local state
+      const category = workout.category;
+      setWorkoutLibrary(prev => ({
+        ...prev,
+        [category]: {
+          ...prev[category],
+          workouts: prev[category].workouts.filter(w => w.id !== workout.id)
+        }
+      }));
+
+      console.log('Deleted workout successfully');
+    } catch (err) {
+      console.error('Error deleting workout:', err);
+      alert('Failed to delete workout. Please try again.');
+    }
+  };
+
+  const viewWorkoutVersions = async (workout) => {
+    try {
+      const { data, error } = await getWorkoutVersions(workout.id);
+      if (error) {
+        console.error('Failed to get workout versions:', error);
+        return;
+      }
+
+      setWorkoutVersions(data || []);
+      setEditingLibraryWorkout(workout);
+      setShowWorkoutVersions(true);
+    } catch (err) {
+      console.error('Error getting workout versions:', err);
+    }
+  };
+
+  // Completed Workout Editing Functions
+  const openEditCompletedWorkout = (workout, weekIndex, workoutIndex) => {
+    // Find the corresponding workout history entry
+    const historyEntry = workoutHistory.find(entry =>
+      entry.workoutId === (workout.originalId || workout.id) &&
+      entry.date === workout.completedDate
+    );
+
+    if (historyEntry) {
+      setEditingCompletedWorkout(workout);
+      setEditingHistoryEntry(historyEntry);
+      setEditingWeekIndex(weekIndex);
+      setEditingWorkoutIndex(workoutIndex);
+      setShowEditCompletedWorkout(true);
+    } else {
+      alert('Unable to find workout history entry to edit.');
+    }
+  };
+
+  const handleEditCompletedWorkout = async (updates) => {
+    try {
+      if (!editingHistoryEntry || !editingCompletedWorkout) return;
+
+      const { data, error } = await updateWorkoutHistory(editingHistoryEntry.id, updates);
+      if (error) {
+        console.error('Failed to update workout history:', error);
+        alert('Failed to update workout details. Please try again.');
+        return;
+      }
+
+      // Update local workout history
+      const updatedEntry = {
+        id: editingHistoryEntry.id,
+        workoutId: data.workout_id,
+        date: data.date,
+        actualTimes: data.actual_times || [],
+        targetTimes: data.target_times || [],
+        notes: data.notes || '',
+        weather: data.weather || '',
+        location: data.location || '',
+        rating: data.rating || 5
+      };
+
+      setWorkoutHistory(prev =>
+        prev.map(entry =>
+          entry.id === editingHistoryEntry.id ? updatedEntry : entry
+        )
+      );
+
+      // Update the completed workout notes in the schedule
+      const updatedCompletionNotes = updates.notes || '';
+
+      if (activeTab === 'builder') {
+        // Update current schedule
+        const newSchedule = { ...schedule };
+        newSchedule.weeks[editingWeekIndex].workouts[editingWorkoutIndex] = {
+          ...editingCompletedWorkout,
+          completedNotes: updatedCompletionNotes
+        };
+        setSchedule(newSchedule);
+      } else if (activeTab === 'schedules' && expandedScheduleId) {
+        // Update saved schedule
+        const updatedSchedules = savedSchedules.map(s => {
+          if (s.id === expandedScheduleId) {
+            const newSavedSchedule = { ...s };
+            newSavedSchedule.schedule.weeks[editingWeekIndex].workouts[editingWorkoutIndex] = {
+              ...editingCompletedWorkout,
+              completedNotes: updatedCompletionNotes
+            };
+            return newSavedSchedule;
+          }
+          return s;
+        });
+        setSavedSchedules(updatedSchedules);
+      }
+
+      setShowEditCompletedWorkout(false);
+      setEditingCompletedWorkout(null);
+      setEditingHistoryEntry(null);
+      console.log('Updated workout completion details successfully');
+    } catch (err) {
+      console.error('Error updating completed workout:', err);
+      alert('Failed to update workout details. Please try again.');
+    }
+  };
+
+  // Schedule Sharing Functions
+  const openShareModal = (schedule) => {
+    setSharingSchedule(schedule);
+    setShowShareModal(true);
+    loadScheduleShares(schedule.id);
+  };
+
+  const loadScheduleShares = async (scheduleId) => {
+    try {
+      const { data, error } = await getScheduleShares(scheduleId);
+      if (error) {
+        console.error('Failed to load schedule shares:', error);
+      } else {
+        setScheduleShares(data || []);
+      }
+    } catch (err) {
+      console.error('Error loading schedule shares:', err);
+    }
+  };
+
+  const handleShareSchedule = async (userEmail, permissionLevel) => {
+    try {
+      if (!sharingSchedule) return;
+
+      const { data, error } = await shareSchedule(sharingSchedule.id, userEmail, permissionLevel);
+      if (error) {
+        console.error('Failed to share schedule:', error);
+        if (error.message.includes('User not found')) {
+          alert('User not found with that email address.');
+        } else {
+          alert('Failed to share schedule. Please try again.');
+        }
+        return;
+      }
+
+      // Reload shares
+      loadScheduleShares(sharingSchedule.id);
+      console.log('Schedule shared successfully');
+    } catch (err) {
+      console.error('Error sharing schedule:', err);
+      alert('Failed to share schedule. Please try again.');
+    }
+  };
+
+  const handleRemoveShare = async (shareId) => {
+    try {
+      const { error } = await removeScheduleShare(shareId);
+      if (error) {
+        console.error('Failed to remove share:', error);
+        alert('Failed to remove share. Please try again.');
+        return;
+      }
+
+      // Reload shares
+      if (sharingSchedule) {
+        loadScheduleShares(sharingSchedule.id);
+      }
+      console.log('Share removed successfully');
+    } catch (err) {
+      console.error('Error removing share:', err);
+      alert('Failed to remove share. Please try again.');
+    }
+  };
+
   const exportHistoryToMarkdown = () => {
     let markdown = "# Workout History\n\n";
     markdown += `Generated on ${new Date().toLocaleDateString()}\n\n`;
@@ -708,6 +1059,21 @@ const WorkoutLibrary = () => {
       handleDragStart(e, workout);
     };
 
+    const handleEditClick = (e) => {
+      e.stopPropagation();
+      openEditWorkout(workout);
+    };
+
+    const handleDeleteClick = (e) => {
+      e.stopPropagation();
+      handleDeleteWorkout(workout);
+    };
+
+    const handleVersionsClick = (e) => {
+      e.stopPropagation();
+      viewWorkoutVersions(workout);
+    };
+
     return (
       <div
         draggable={isDraggable}
@@ -717,13 +1083,42 @@ const WorkoutLibrary = () => {
       >
         <div className="workout-header">
           {!isPickerMode && (
-            <div
-              className="info-icon"
-              onClick={handleInfoClick}
-              title="View workout details"
-            >
-              <Info size={16} />
-            </div>
+            <>
+              <div className="workout-actions">
+                <button
+                  onClick={handleInfoClick}
+                  className="action-btn info-btn"
+                  title="View workout details"
+                >
+                  <Info size={14} />
+                </button>
+                <button
+                  onClick={handleEditClick}
+                  className="action-btn edit-btn"
+                  title="Edit workout"
+                >
+                  <Edit3 size={14} />
+                </button>
+                {workout.version && workout.version > 1 && (
+                  <button
+                    onClick={handleVersionsClick}
+                    className="action-btn versions-btn"
+                    title="View versions"
+                  >
+                    v{workout.version}
+                  </button>
+                )}
+                {workout.is_custom && (
+                  <button
+                    onClick={handleDeleteClick}
+                    className="action-btn delete-btn"
+                    title="Delete workout"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
+            </>
           )}
           {lastRun && (
             <span className="last-run-date">
@@ -784,6 +1179,15 @@ const WorkoutLibrary = () => {
             >
               <Eye size={12} />
             </button>
+            {workout.completed && (
+              <button
+                onClick={() => openEditCompletedWorkout(workout, weekIndex, workoutIndex)}
+                className="action-btn edit-completed-btn"
+                title="Edit completion details"
+              >
+                <Edit3 size={12} />
+              </button>
+            )}
             <button
               onClick={() => removeWorkout(weekIndex, workoutIndex)}
               className="action-btn remove-btn"
@@ -812,15 +1216,8 @@ const WorkoutLibrary = () => {
     <div className="workout-app">
       <div className="app-header">
         <div className="header-content">
-          <div className="app-logo">
-            <img
-              src={`${process.env.PUBLIC_URL}/grubes_logo.png`}
-              alt="Grube's GOOBS"
-              className="logo-image"
-            />
-          </div>
           <div className="header-text">
-            <h1>Mile Training with Dan Gruber</h1>
+            <h1>Mile Training Inspired by Dan Gruber</h1>
             <p>Build schedules, track workout history, and export to markdown. (17 total workouts)</p>
           </div>
         </div>
@@ -848,19 +1245,32 @@ const WorkoutLibrary = () => {
       </div>
 
       {activeTab === 'library' && (
-        <div className="library-grid">
-          {Object.values(workoutLibrary).map((category, categoryIndex) => (
-            <div key={categoryIndex} className="category-card">
-              <h3 className="category-title">{category.name}</h3>
-              <p className="category-description">{category.description}</p>
+        <div className="library-container">
+          <div className="library-header">
+            <h2>Workout Library</h2>
+            <button
+              onClick={openCreateWorkout}
+              className="create-workout-btn"
+            >
+              <Plus size={16} />
+              Create New Workout
+            </button>
+          </div>
 
-              <div className="workouts-list">
-                {category.workouts.map((workout) => (
-                  <LibraryWorkout key={workout.id} workout={workout} />
-                ))}
+          <div className="library-grid">
+            {Object.values(workoutLibrary).map((category, categoryIndex) => (
+              <div key={categoryIndex} className="category-card">
+                <h3 className="category-title">{category.name}</h3>
+                <p className="category-description">{category.description}</p>
+
+                <div className="workouts-list">
+                  {category.workouts.map((workout) => (
+                    <LibraryWorkout key={workout.id} workout={workout} />
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
 
@@ -1035,10 +1445,10 @@ const WorkoutLibrary = () => {
             </button>
           </div>
 
-          {savedSchedules.length === 0 ? (
+          {savedSchedules.length === 0 && sharedSchedules.length === 0 ? (
             <div className="empty-schedules">
               <FileText size={48} />
-              <h3>No Saved Schedules</h3>
+              <h3>No Schedules</h3>
               <p>Create your first training schedule in the Schedule Builder</p>
               <button
                 onClick={() => setActiveTab('builder')}
@@ -1048,72 +1458,168 @@ const WorkoutLibrary = () => {
               </button>
             </div>
           ) : (
-            <div className="schedules-grid">
-              {savedSchedules.map((savedSchedule) => (
-                <div key={savedSchedule.id} className="schedule-card">
-                  <div className="schedule-card-header">
-                    <h3>{savedSchedule.name}</h3>
-                    <div className="schedule-actions">
-                      <button
-                        onClick={() => setExpandedScheduleId(
-                          expandedScheduleId === savedSchedule.id ? null : savedSchedule.id
+            <div className="schedules-sections">
+              {savedSchedules.length > 0 && (
+                <div className="schedule-section">
+                  <div className="section-header">
+                    <h3><Users size={20} /> Your Schedules</h3>
+                  </div>
+                  <div className="schedules-grid">
+                    {savedSchedules.map((savedSchedule) => (
+                      <div key={savedSchedule.id} className="schedule-card">
+                        <div className="schedule-card-header">
+                          <h3>{savedSchedule.name}</h3>
+                          <div className="schedule-actions">
+                            <button
+                              onClick={() => setExpandedScheduleId(
+                                expandedScheduleId === savedSchedule.id ? null : savedSchedule.id
+                              )}
+                              className="action-btn view-btn"
+                              title="View schedule"
+                            >
+                              <Eye size={16} />
+                            </button>
+                            <button
+                              onClick={() => exportToMarkdown(savedSchedule)}
+                              className="action-btn export-btn"
+                              title="Export to Markdown"
+                            >
+                              <Download size={16} />
+                            </button>
+                            {savedSchedule.isOwner && (
+                              <>
+                                <button
+                                  onClick={() => openShareModal(savedSchedule)}
+                                  className="action-btn share-btn"
+                                  title="Share schedule"
+                                >
+                                  <Share2 size={16} />
+                                </button>
+                                <button
+                                  onClick={() => loadSchedule(savedSchedule)}
+                                  className="action-btn edit-btn"
+                                  title="Edit schedule"
+                                >
+                                  <Edit3 size={16} />
+                                </button>
+                                <button
+                                  onClick={() => deleteSchedule(savedSchedule.id)}
+                                  className="action-btn delete-btn"
+                                  title="Delete schedule"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="schedule-info">
+                          <p>Created: {new Date(savedSchedule.createdAt).toLocaleDateString()}</p>
+                          {savedSchedule.trainingStartDate && (
+                            <p>Start Date: {new Date(savedSchedule.trainingStartDate).toLocaleDateString()}</p>
+                          )}
+                          <p>Total Workouts: {savedSchedule.schedule.weeks.reduce((total, week) => total + week.workouts.length, 0)}</p>
+                          {savedSchedule.isOwner && <p className="ownership-badge">Owner</p>}
+                        </div>
+
+                        {expandedScheduleId === savedSchedule.id && (
+                          <ScheduleDetailView
+                            schedule={savedSchedule}
+                            onWorkoutEdit={openWorkoutEdit}
+                            onEditCompletedWorkout={openEditCompletedWorkout}
+                            onMileageUpdate={(weekIndex, field, value) => {
+                              const updatedSchedules = savedSchedules.map(s => {
+                                if (s.id === savedSchedule.id) {
+                                  const newSchedule = { ...s };
+                                  newSchedule.schedule.weeks[weekIndex][field] = value;
+                                  return newSchedule;
+                                }
+                                return s;
+                              });
+                              setSavedSchedules(updatedSchedules);
+                            }}
+                          />
                         )}
-                        className="action-btn view-btn"
-                        title="View schedule"
-                      >
-                        <Eye size={16} />
-                      </button>
-                      <button
-                        onClick={() => exportToMarkdown(savedSchedule)}
-                        className="action-btn export-btn"
-                        title="Export to Markdown"
-                      >
-                        <Download size={16} />
-                      </button>
-                      <button
-                        onClick={() => loadSchedule(savedSchedule)}
-                        className="action-btn edit-btn"
-                        title="Edit schedule"
-                      >
-                        <Edit3 size={16} />
-                      </button>
-                      <button
-                        onClick={() => deleteSchedule(savedSchedule.id)}
-                        className="action-btn delete-btn"
-                        title="Delete schedule"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
+                      </div>
+                    ))}
                   </div>
-
-                  <div className="schedule-info">
-                    <p>Created: {new Date(savedSchedule.createdAt).toLocaleDateString()}</p>
-                    {savedSchedule.trainingStartDate && (
-                      <p>Start Date: {new Date(savedSchedule.trainingStartDate).toLocaleDateString()}</p>
-                    )}
-                    <p>Total Workouts: {savedSchedule.schedule.weeks.reduce((total, week) => total + week.workouts.length, 0)}</p>
-                  </div>
-
-                  {expandedScheduleId === savedSchedule.id && (
-                    <ScheduleDetailView
-                      schedule={savedSchedule}
-                      onWorkoutEdit={openWorkoutEdit}
-                      onMileageUpdate={(weekIndex, field, value) => {
-                        const updatedSchedules = savedSchedules.map(s => {
-                          if (s.id === savedSchedule.id) {
-                            const newSchedule = { ...s };
-                            newSchedule.schedule.weeks[weekIndex][field] = value;
-                            return newSchedule;
-                          }
-                          return s;
-                        });
-                        setSavedSchedules(updatedSchedules);
-                      }}
-                    />
-                  )}
                 </div>
-              ))}
+              )}
+
+              {sharedSchedules.length > 0 && (
+                <div className="schedule-section">
+                  <div className="section-header">
+                    <h3><Share2 size={20} /> Shared with You</h3>
+                  </div>
+                  <div className="schedules-grid">
+                    {sharedSchedules.map((sharedSchedule) => (
+                      <div key={sharedSchedule.id} className="schedule-card shared-schedule">
+                        <div className="schedule-card-header">
+                          <h3>{sharedSchedule.name}</h3>
+                          <div className="schedule-actions">
+                            <button
+                              onClick={() => setExpandedScheduleId(
+                                expandedScheduleId === sharedSchedule.id ? null : sharedSchedule.id
+                              )}
+                              className="action-btn view-btn"
+                              title="View schedule"
+                            >
+                              <Eye size={16} />
+                            </button>
+                            <button
+                              onClick={() => exportToMarkdown(sharedSchedule)}
+                              className="action-btn export-btn"
+                              title="Export to Markdown"
+                            >
+                              <Download size={16} />
+                            </button>
+                            {sharedSchedule.permissionLevel === 'edit' && (
+                              <button
+                                onClick={() => loadSchedule(sharedSchedule)}
+                                className="action-btn edit-btn"
+                                title="Edit schedule"
+                              >
+                                <Edit3 size={16} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="schedule-info">
+                          <p>Shared by: {sharedSchedule.sharedBy}</p>
+                          <p>Permission: {sharedSchedule.permissionLevel}</p>
+                          {sharedSchedule.trainingStartDate && (
+                            <p>Start Date: {new Date(sharedSchedule.trainingStartDate).toLocaleDateString()}</p>
+                          )}
+                          <p>Total Workouts: {sharedSchedule.schedule.weeks.reduce((total, week) => total + week.workouts.length, 0)}</p>
+                        </div>
+
+                        {expandedScheduleId === sharedSchedule.id && (
+                          <ScheduleDetailView
+                            schedule={sharedSchedule}
+                            onWorkoutEdit={openWorkoutEdit}
+                            onEditCompletedWorkout={openEditCompletedWorkout}
+                            onMileageUpdate={(weekIndex, field, value) => {
+                              if (sharedSchedule.permissionLevel === 'edit') {
+                                const updatedSchedules = sharedSchedules.map(s => {
+                                  if (s.id === sharedSchedule.id) {
+                                    const newSchedule = { ...s };
+                                    newSchedule.schedule.weeks[weekIndex][field] = value;
+                                    return newSchedule;
+                                  }
+                                  return s;
+                                });
+                                setSharedSchedules(updatedSchedules);
+                              }
+                            }}
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1462,6 +1968,120 @@ const WorkoutLibrary = () => {
           </div>
         </div>
       )}
+
+      {/* Create Workout Modal */}
+      {showCreateWorkout && (
+        <div className="modal-overlay" onClick={() => setShowCreateWorkout(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Create New Workout</h3>
+              <button
+                onClick={() => setShowCreateWorkout(false)}
+                className="modal-close"
+              >
+                ✕
+              </button>
+            </div>
+            <WorkoutForm
+              onSubmit={handleCreateWorkout}
+              onCancel={() => setShowCreateWorkout(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Edit Workout Modal */}
+      {showWorkoutLibraryEdit && editingLibraryWorkout && (
+        <div className="modal-overlay" onClick={() => setShowWorkoutLibraryEdit(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Edit Workout</h3>
+              <button
+                onClick={() => setShowWorkoutLibraryEdit(false)}
+                className="modal-close"
+              >
+                ✕
+              </button>
+            </div>
+            <WorkoutForm
+              workout={editingLibraryWorkout}
+              onSubmit={handleEditWorkout}
+              onCancel={() => setShowWorkoutLibraryEdit(false)}
+              isEdit={true}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Workout Versions Modal */}
+      {showWorkoutVersions && editingLibraryWorkout && (
+        <div className="modal-overlay" onClick={() => setShowWorkoutVersions(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Version History: {editingLibraryWorkout.nickname}</h3>
+              <button
+                onClick={() => setShowWorkoutVersions(false)}
+                className="modal-close"
+              >
+                ✕
+              </button>
+            </div>
+            <WorkoutVersionsView
+              workout={editingLibraryWorkout}
+              versions={workoutVersions}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Edit Completed Workout Modal */}
+      {showEditCompletedWorkout && editingCompletedWorkout && editingHistoryEntry && (
+        <div className="modal-overlay" onClick={() => setShowEditCompletedWorkout(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h3>Edit Completion Details</h3>
+                <p>{editingCompletedWorkout.nickname} - {editingCompletedWorkout.name}</p>
+              </div>
+              <button
+                onClick={() => setShowEditCompletedWorkout(false)}
+                className="modal-close"
+              >
+                ✕
+              </button>
+            </div>
+            <CompletedWorkoutEditForm
+              historyEntry={editingHistoryEntry}
+              onSubmit={handleEditCompletedWorkout}
+              onCancel={() => setShowEditCompletedWorkout(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Schedule Sharing Modal */}
+      {showShareModal && sharingSchedule && (
+        <div className="modal-overlay" onClick={() => setShowShareModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Share Schedule: {sharingSchedule.name}</h3>
+              <button
+                onClick={() => setShowShareModal(false)}
+                className="modal-close"
+              >
+                ✕
+              </button>
+            </div>
+            <ScheduleShareModal
+              schedule={sharingSchedule}
+              shares={scheduleShares}
+              onShare={handleShareSchedule}
+              onRemoveShare={handleRemoveShare}
+              onClose={() => setShowShareModal(false)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1599,7 +2219,7 @@ const WorkoutEditForm = ({ workout, onComplete, onCancel }) => {
   );
 };
 
-const ScheduleDetailView = ({ schedule, onWorkoutEdit, onMileageUpdate }) => {
+const ScheduleDetailView = ({ schedule, onWorkoutEdit, onEditCompletedWorkout, onMileageUpdate }) => {
   const getWeekStartDate = (weekNumber) => {
     if (!schedule.trainingStartDate) return '';
     const startDate = new Date(schedule.trainingStartDate);
@@ -1652,7 +2272,7 @@ const ScheduleDetailView = ({ schedule, onWorkoutEdit, onMileageUpdate }) => {
                   workout={workout}
                   weekIndex={weekIndex}
                   workoutIndex={workoutIndex}
-                  onEdit={onWorkoutEdit}
+                  onEdit={workout.completed ? onEditCompletedWorkout : onWorkoutEdit}
                 />
               ))}
             </div>
@@ -1684,11 +2304,408 @@ const ScheduleViewWorkout = ({ workout, weekIndex, workoutIndex, onEdit }) => {
           <button
             onClick={() => onEdit(workout, weekIndex, workoutIndex)}
             className="action-btn edit-workout-btn"
-            title="Edit workout"
+            title={workout.completed ? "Edit completion details" : "Complete workout"}
           >
             <Edit3 size={12} />
           </button>
         </div>
+      </div>
+    </div>
+  );
+};
+
+const WorkoutForm = ({ workout = null, onSubmit, onCancel, isEdit = false }) => {
+  const [formData, setFormData] = useState({
+    name: workout?.name || '',
+    nickname: workout?.nickname || '',
+    description: workout?.description || '',
+    rx: workout?.rx || '',
+    category: workout?.category || 'primary',
+    editReason: ''
+  });
+
+  const updateForm = (field, value) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleSubmit = () => {
+    if (!formData.name || !formData.nickname || !formData.description || !formData.rx) {
+      alert('Please fill in all required fields');
+      return;
+    }
+
+    if (isEdit) {
+      const updates = {
+        name: formData.name,
+        nickname: formData.nickname,
+        description: formData.description,
+        rx: formData.rx,
+        category: formData.category
+      };
+      onSubmit(updates, formData.editReason || 'Workout updated');
+    } else {
+      onSubmit(formData);
+    }
+  };
+
+  return (
+    <div className="workout-form">
+      <div className="form-container">
+        <div className="form-field">
+          <label>Workout Name *</label>
+          <input
+            type="text"
+            value={formData.name}
+            onChange={(e) => updateForm('name', e.target.value)}
+            placeholder="e.g., 400-1000-400 Pyramid"
+          />
+        </div>
+
+        <div className="form-field">
+          <label>Nickname *</label>
+          <input
+            type="text"
+            value={formData.nickname}
+            onChange={(e) => updateForm('nickname', e.target.value)}
+            placeholder="e.g., The Pyramid 1000"
+          />
+        </div>
+
+        <div className="form-field">
+          <label>Category *</label>
+          <select
+            value={formData.category}
+            onChange={(e) => updateForm('category', e.target.value)}
+          >
+            <option value="primary">Primary/Core Workouts</option>
+            <option value="secondary">Secondary/Speed Workouts</option>
+          </select>
+        </div>
+
+        <div className="form-field">
+          <label>Description *</label>
+          <textarea
+            value={formData.description}
+            onChange={(e) => updateForm('description', e.target.value)}
+            rows={3}
+            placeholder="e.g., 2x 400m, 3x 1000m, 2x 400m"
+          />
+        </div>
+
+        <div className="form-field">
+          <label>Rx (Prescription) *</label>
+          <textarea
+            value={formData.rx}
+            onChange={(e) => updateForm('rx', e.target.value)}
+            rows={3}
+            placeholder="e.g., 400s @68-70s, 1000s @72-76s, 400s @68-70s w/ 400m recoveries"
+          />
+        </div>
+
+        {isEdit && (
+          <div className="form-field">
+            <label>Reason for Edit (Optional)</label>
+            <input
+              type="text"
+              value={formData.editReason}
+              onChange={(e) => updateForm('editReason', e.target.value)}
+              placeholder="e.g., Updated target times, Fixed description"
+            />
+          </div>
+        )}
+      </div>
+
+      <div className="modal-footer">
+        <button onClick={onCancel} className="cancel-btn">
+          Cancel
+        </button>
+        <button onClick={handleSubmit} className="submit-btn">
+          {isEdit ? 'Update Workout' : 'Create Workout'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const WorkoutVersionsView = ({ workout, versions }) => {
+  return (
+    <div className="workout-versions">
+      <div className="current-version">
+        <h4>Current Version (v{workout.version || 1})</h4>
+        <div className="version-details">
+          <p><strong>Name:</strong> {workout.name}</p>
+          <p><strong>Nickname:</strong> {workout.nickname}</p>
+          <p><strong>Description:</strong> {workout.description}</p>
+          <p><strong>Rx:</strong> {workout.rx}</p>
+          <p><strong>Category:</strong> {workout.category}</p>
+          <p><strong>Last updated:</strong> {new Date(workout.updated_at).toLocaleDateString()}</p>
+        </div>
+      </div>
+
+      {versions.length > 0 && (
+        <div className="version-history">
+          <h4>Previous Versions</h4>
+          {versions.map((version) => (
+            <div key={version.id} className="version-item">
+              <div className="version-header">
+                <span className="version-number">v{version.version_number}</span>
+                <span className="version-date">
+                  {new Date(version.created_at).toLocaleDateString()}
+                </span>
+              </div>
+              {version.edit_reason && (
+                <p className="version-reason"><em>{version.edit_reason}</em></p>
+              )}
+              <div className="version-details">
+                <p><strong>Name:</strong> {version.name}</p>
+                <p><strong>Nickname:</strong> {version.nickname}</p>
+                <p><strong>Description:</strong> {version.description}</p>
+                <p><strong>Rx:</strong> {version.rx}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {versions.length === 0 && (
+        <div className="no-versions">
+          <p>No previous versions available.</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const CompletedWorkoutEditForm = ({ historyEntry, onSubmit, onCancel }) => {
+  const [formData, setFormData] = useState({
+    date: historyEntry.date,
+    actualTimes: historyEntry.actualTimes.join(', '),
+    targetTimes: historyEntry.targetTimes.join(', '),
+    notes: historyEntry.notes || '',
+    weather: historyEntry.weather || '',
+    location: historyEntry.location || '',
+    rating: historyEntry.rating || 5
+  });
+
+  const updateForm = (field, value) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleSubmit = () => {
+    const updates = {
+      date: formData.date,
+      actualTimes: formData.actualTimes.split(',').map(t => t.trim()).filter(t => t),
+      targetTimes: formData.targetTimes.split(',').map(t => t.trim()).filter(t => t),
+      notes: formData.notes,
+      weather: formData.weather,
+      location: formData.location,
+      rating: parseInt(formData.rating)
+    };
+    onSubmit(updates);
+  };
+
+  return (
+    <div className="completed-workout-edit-form">
+      <div className="form-container">
+        <div className="form-field">
+          <label>Completion Date</label>
+          <input
+            type="date"
+            value={formData.date}
+            onChange={(e) => updateForm('date', e.target.value)}
+          />
+        </div>
+
+        <div className="form-field">
+          <label>Actual Times (comma separated)</label>
+          <input
+            type="text"
+            value={formData.actualTimes}
+            onChange={(e) => updateForm('actualTimes', e.target.value)}
+            placeholder="e.g., 68.2, 67.9, 3:03.3"
+          />
+        </div>
+
+        <div className="form-field">
+          <label>Target Times (comma separated)</label>
+          <input
+            type="text"
+            value={formData.targetTimes}
+            onChange={(e) => updateForm('targetTimes', e.target.value)}
+            placeholder="e.g., 68, 68, 3:03"
+          />
+        </div>
+
+        <div className="form-field">
+          <label>Notes</label>
+          <textarea
+            value={formData.notes}
+            onChange={(e) => updateForm('notes', e.target.value)}
+            rows={3}
+            placeholder="How did the workout feel? Any observations..."
+          />
+        </div>
+
+        <div className="form-row">
+          <div className="form-field">
+            <label>Weather</label>
+            <input
+              type="text"
+              value={formData.weather}
+              onChange={(e) => updateForm('weather', e.target.value)}
+              placeholder="Cool, windy"
+            />
+          </div>
+
+          <div className="form-field">
+            <label>Location</label>
+            <input
+              type="text"
+              value={formData.location}
+              onChange={(e) => updateForm('location', e.target.value)}
+              placeholder="Track, Armory"
+            />
+          </div>
+        </div>
+
+        <div className="form-field">
+          <label>Rating (1-10)</label>
+          <input
+            type="number"
+            min="1"
+            max="10"
+            value={formData.rating}
+            onChange={(e) => updateForm('rating', e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="modal-footer">
+        <button onClick={onCancel} className="cancel-btn">
+          Cancel
+        </button>
+        <button
+          onClick={handleSubmit}
+          disabled={!formData.date}
+          className="submit-btn"
+        >
+          Update Details
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const ScheduleShareModal = ({ schedule, shares, onShare, onRemoveShare, onClose }) => {
+  const [shareForm, setShareForm] = useState({
+    email: '',
+    permissionLevel: 'view'
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const updateForm = (field, value) => {
+    setShareForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleShare = async () => {
+    if (!shareForm.email) {
+      alert('Please enter an email address.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await onShare(shareForm.email, shareForm.permissionLevel);
+      setShareForm({ email: '', permissionLevel: 'view' });
+    } catch (error) {
+      console.error('Error sharing schedule:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleRemove = async (shareId) => {
+    if (window.confirm('Are you sure you want to remove this share?')) {
+      await onRemoveShare(shareId);
+    }
+  };
+
+  return (
+    <div className="schedule-share-modal">
+      <div className="share-form-section">
+        <h4>Share with New User</h4>
+        <div className="form-container">
+          <div className="form-field">
+            <label>Email Address</label>
+            <input
+              type="email"
+              value={shareForm.email}
+              onChange={(e) => updateForm('email', e.target.value)}
+              placeholder="user@example.com"
+              disabled={isSubmitting}
+            />
+          </div>
+
+          <div className="form-field">
+            <label>Permission Level</label>
+            <select
+              value={shareForm.permissionLevel}
+              onChange={(e) => updateForm('permissionLevel', e.target.value)}
+              disabled={isSubmitting}
+            >
+              <option value="view">View Only</option>
+              <option value="edit">View & Edit</option>
+            </select>
+          </div>
+
+          <button
+            onClick={handleShare}
+            disabled={!shareForm.email || isSubmitting}
+            className="share-btn"
+          >
+            {isSubmitting ? 'Sharing...' : 'Share Schedule'}
+          </button>
+        </div>
+      </div>
+
+      {shares && shares.length > 0 && (
+        <div className="existing-shares-section">
+          <h4>Current Shares</h4>
+          <div className="shares-list">
+            {shares.map((share) => (
+              <div key={share.id} className="share-item">
+                <div className="share-info">
+                  <div className="share-email">{share.shared_with_user.email}</div>
+                  <div className="share-permission">
+                    Permission: {share.permission_level}
+                  </div>
+                  <div className="share-date">
+                    Shared: {new Date(share.created_at).toLocaleDateString()}
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleRemove(share.id)}
+                  className="remove-share-btn"
+                  title="Remove share"
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {(!shares || shares.length === 0) && (
+        <div className="no-shares">
+          <p>This schedule is not currently shared with anyone.</p>
+        </div>
+      )}
+
+      <div className="modal-footer">
+        <button onClick={onClose} className="cancel-btn">
+          Close
+        </button>
       </div>
     </div>
   );

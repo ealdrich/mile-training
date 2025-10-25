@@ -108,3 +108,384 @@ CREATE TRIGGER update_schedule_weeks_updated_at BEFORE UPDATE ON schedule_weeks 
 CREATE TRIGGER update_schedule_workouts_updated_at BEFORE UPDATE ON schedule_workouts FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
 CREATE TRIGGER update_workout_history_updated_at BEFORE UPDATE ON workout_history FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
 CREATE TRIGGER update_workout_library_updated_at BEFORE UPDATE ON workout_library FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
+
+-- Workout Versions table (for versioning workout edits)
+CREATE TABLE workout_versions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    workout_id TEXT REFERENCES workout_library(id),
+    version_number INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    nickname TEXT NOT NULL,
+    description TEXT NOT NULL,
+    rx TEXT NOT NULL,
+    category TEXT NOT NULL CHECK (category IN ('primary', 'secondary')),
+    edited_by TEXT, -- Could reference a users table in future
+    edit_reason TEXT, -- Optional reason for the edit
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(workout_id, version_number)
+);
+
+-- Create indexes for workout versions
+CREATE INDEX idx_workout_versions_workout_id ON workout_versions(workout_id);
+CREATE INDEX idx_workout_versions_created_at ON workout_versions(created_at DESC);
+
+-- Add version tracking to workout_library
+ALTER TABLE workout_library ADD COLUMN version INTEGER DEFAULT 1;
+ALTER TABLE workout_library ADD COLUMN is_custom BOOLEAN DEFAULT FALSE;
+
+-- Add user ownership to relevant tables
+ALTER TABLE training_schedules ADD COLUMN user_id UUID REFERENCES auth.users(id);
+ALTER TABLE workout_history ADD COLUMN user_id UUID REFERENCES auth.users(id);
+ALTER TABLE workout_library ADD COLUMN created_by UUID REFERENCES auth.users(id);
+
+-- Enable Row Level Security (RLS)
+ALTER TABLE training_schedules ENABLE ROW LEVEL SECURITY;
+ALTER TABLE schedule_weeks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE schedule_workouts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE workout_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE workout_library ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for training schedules (users can only see their own)
+CREATE POLICY "Users can view their own training schedules" ON training_schedules
+    FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert their own training schedules" ON training_schedules
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update their own training schedules" ON training_schedules
+    FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete their own training schedules" ON training_schedules
+    FOR DELETE USING (auth.uid() = user_id);
+
+-- Create policies for schedule weeks (inherit from parent schedule)
+CREATE POLICY "Users can view their schedule weeks" ON schedule_weeks
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM training_schedules
+            WHERE training_schedules.id = schedule_weeks.schedule_id
+            AND training_schedules.user_id = auth.uid()
+        )
+    );
+CREATE POLICY "Users can insert their schedule weeks" ON schedule_weeks
+    FOR INSERT WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM training_schedules
+            WHERE training_schedules.id = schedule_weeks.schedule_id
+            AND training_schedules.user_id = auth.uid()
+        )
+    );
+CREATE POLICY "Users can update their schedule weeks" ON schedule_weeks
+    FOR UPDATE USING (
+        EXISTS (
+            SELECT 1 FROM training_schedules
+            WHERE training_schedules.id = schedule_weeks.schedule_id
+            AND training_schedules.user_id = auth.uid()
+        )
+    );
+CREATE POLICY "Users can delete their schedule weeks" ON schedule_weeks
+    FOR DELETE USING (
+        EXISTS (
+            SELECT 1 FROM training_schedules
+            WHERE training_schedules.id = schedule_weeks.schedule_id
+            AND training_schedules.user_id = auth.uid()
+        )
+    );
+
+-- Create policies for schedule workouts (inherit from parent schedule)
+CREATE POLICY "Users can view their schedule workouts" ON schedule_workouts
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM schedule_weeks sw
+            JOIN training_schedules ts ON sw.schedule_id = ts.id
+            WHERE sw.id = schedule_workouts.week_id
+            AND ts.user_id = auth.uid()
+        )
+    );
+CREATE POLICY "Users can insert their schedule workouts" ON schedule_workouts
+    FOR INSERT WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM schedule_weeks sw
+            JOIN training_schedules ts ON sw.schedule_id = ts.id
+            WHERE sw.id = schedule_workouts.week_id
+            AND ts.user_id = auth.uid()
+        )
+    );
+CREATE POLICY "Users can update their schedule workouts" ON schedule_workouts
+    FOR UPDATE USING (
+        EXISTS (
+            SELECT 1 FROM schedule_weeks sw
+            JOIN training_schedules ts ON sw.schedule_id = ts.id
+            WHERE sw.id = schedule_workouts.week_id
+            AND ts.user_id = auth.uid()
+        )
+    );
+CREATE POLICY "Users can delete their schedule workouts" ON schedule_workouts
+    FOR DELETE USING (
+        EXISTS (
+            SELECT 1 FROM schedule_weeks sw
+            JOIN training_schedules ts ON sw.schedule_id = ts.id
+            WHERE sw.id = schedule_workouts.week_id
+            AND ts.user_id = auth.uid()
+        )
+    );
+
+-- Create policies for workout history (users can only see their own)
+CREATE POLICY "Users can view their own workout history" ON workout_history
+    FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert their own workout history" ON workout_history
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update their own workout history" ON workout_history
+    FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete their own workout history" ON workout_history
+    FOR DELETE USING (auth.uid() = user_id);
+
+-- Create policies for workout library (shared but with ownership tracking)
+-- Everyone can view all workouts (shared library)
+CREATE POLICY "All users can view workout library" ON workout_library
+    FOR SELECT USING (true);
+-- Users can only insert workouts as themselves
+CREATE POLICY "Users can insert workouts" ON workout_library
+    FOR INSERT WITH CHECK (auth.uid() = created_by OR created_by IS NULL);
+-- Users can only update their own custom workouts
+CREATE POLICY "Users can update their own workouts" ON workout_library
+    FOR UPDATE USING (auth.uid() = created_by AND is_custom = true);
+-- Users can only delete their own custom workouts
+CREATE POLICY "Users can delete their own workouts" ON workout_library
+    FOR DELETE USING (auth.uid() = created_by AND is_custom = true);
+
+-- Create policies for workout versions (inherit from parent workout)
+CREATE POLICY "All users can view workout versions" ON workout_versions
+    FOR SELECT USING (true);
+CREATE POLICY "Users can insert workout versions" ON workout_versions
+    FOR INSERT WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM workout_library
+            WHERE workout_library.id = workout_versions.workout_id
+            AND (workout_library.created_by = auth.uid() OR workout_library.created_by IS NULL)
+        )
+    );
+
+-- Schedule Sharing System
+-- Table to track which schedules are shared with which users
+CREATE TABLE schedule_shares (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    schedule_id UUID REFERENCES training_schedules(id) ON DELETE CASCADE,
+    shared_with_user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    shared_by_user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    permission_level TEXT NOT NULL CHECK (permission_level IN ('view', 'edit')) DEFAULT 'view',
+    shared_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(schedule_id, shared_with_user_id)
+);
+
+-- Create indexes for schedule sharing
+CREATE INDEX idx_schedule_shares_schedule_id ON schedule_shares(schedule_id);
+CREATE INDEX idx_schedule_shares_shared_with ON schedule_shares(shared_with_user_id);
+
+-- Enable RLS for schedule shares
+ALTER TABLE schedule_shares ENABLE ROW LEVEL SECURITY;
+
+-- Policies for schedule shares
+CREATE POLICY "Users can view shares they created or received" ON schedule_shares
+    FOR SELECT USING (
+        auth.uid() = shared_by_user_id OR
+        auth.uid() = shared_with_user_id
+    );
+
+CREATE POLICY "Users can create shares for their own schedules" ON schedule_shares
+    FOR INSERT WITH CHECK (
+        auth.uid() = shared_by_user_id AND
+        EXISTS (
+            SELECT 1 FROM training_schedules
+            WHERE training_schedules.id = schedule_shares.schedule_id
+            AND training_schedules.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Schedule owners can delete shares" ON schedule_shares
+    FOR DELETE USING (auth.uid() = shared_by_user_id);
+
+-- Update training schedules policies to include shared access
+DROP POLICY "Users can view their own training schedules" ON training_schedules;
+CREATE POLICY "Users can view their own or shared training schedules" ON training_schedules
+    FOR SELECT USING (
+        auth.uid() = user_id OR
+        EXISTS (
+            SELECT 1 FROM schedule_shares
+            WHERE schedule_shares.schedule_id = training_schedules.id
+            AND schedule_shares.shared_with_user_id = auth.uid()
+        )
+    );
+
+-- Update other policies to allow shared access with edit permission
+DROP POLICY "Users can update their own training schedules" ON training_schedules;
+CREATE POLICY "Users can update their own or editable shared training schedules" ON training_schedules
+    FOR UPDATE USING (
+        auth.uid() = user_id OR
+        EXISTS (
+            SELECT 1 FROM schedule_shares
+            WHERE schedule_shares.schedule_id = training_schedules.id
+            AND schedule_shares.shared_with_user_id = auth.uid()
+            AND schedule_shares.permission_level = 'edit'
+        )
+    );
+
+-- Update schedule weeks policies for shared access
+DROP POLICY "Users can view their schedule weeks" ON schedule_weeks;
+CREATE POLICY "Users can view their own or shared schedule weeks" ON schedule_weeks
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM training_schedules
+            WHERE training_schedules.id = schedule_weeks.schedule_id
+            AND (
+                training_schedules.user_id = auth.uid() OR
+                EXISTS (
+                    SELECT 1 FROM schedule_shares
+                    WHERE schedule_shares.schedule_id = training_schedules.id
+                    AND schedule_shares.shared_with_user_id = auth.uid()
+                )
+            )
+        )
+    );
+
+DROP POLICY "Users can update their schedule weeks" ON schedule_weeks;
+CREATE POLICY "Users can update their own or editable shared schedule weeks" ON schedule_weeks
+    FOR UPDATE USING (
+        EXISTS (
+            SELECT 1 FROM training_schedules
+            WHERE training_schedules.id = schedule_weeks.schedule_id
+            AND (
+                training_schedules.user_id = auth.uid() OR
+                EXISTS (
+                    SELECT 1 FROM schedule_shares
+                    WHERE schedule_shares.schedule_id = training_schedules.id
+                    AND schedule_shares.shared_with_user_id = auth.uid()
+                    AND schedule_shares.permission_level = 'edit'
+                )
+            )
+        )
+    );
+
+DROP POLICY "Users can insert their schedule weeks" ON schedule_weeks;
+CREATE POLICY "Users can insert weeks for their own or editable shared schedules" ON schedule_weeks
+    FOR INSERT WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM training_schedules
+            WHERE training_schedules.id = schedule_weeks.schedule_id
+            AND (
+                training_schedules.user_id = auth.uid() OR
+                EXISTS (
+                    SELECT 1 FROM schedule_shares
+                    WHERE schedule_shares.schedule_id = training_schedules.id
+                    AND schedule_shares.shared_with_user_id = auth.uid()
+                    AND schedule_shares.permission_level = 'edit'
+                )
+            )
+        )
+    );
+
+DROP POLICY "Users can delete their schedule weeks" ON schedule_weeks;
+CREATE POLICY "Users can delete weeks from their own or editable shared schedules" ON schedule_weeks
+    FOR DELETE USING (
+        EXISTS (
+            SELECT 1 FROM training_schedules
+            WHERE training_schedules.id = schedule_weeks.schedule_id
+            AND (
+                training_schedules.user_id = auth.uid() OR
+                EXISTS (
+                    SELECT 1 FROM schedule_shares
+                    WHERE schedule_shares.schedule_id = training_schedules.id
+                    AND schedule_shares.shared_with_user_id = auth.uid()
+                    AND schedule_shares.permission_level = 'edit'
+                )
+            )
+        )
+    );
+
+-- Update schedule workouts policies similarly
+DROP POLICY "Users can view their schedule workouts" ON schedule_workouts;
+CREATE POLICY "Users can view their own or shared schedule workouts" ON schedule_workouts
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM schedule_weeks sw
+            JOIN training_schedules ts ON sw.schedule_id = ts.id
+            WHERE sw.id = schedule_workouts.week_id
+            AND (
+                ts.user_id = auth.uid() OR
+                EXISTS (
+                    SELECT 1 FROM schedule_shares
+                    WHERE schedule_shares.schedule_id = ts.id
+                    AND schedule_shares.shared_with_user_id = auth.uid()
+                )
+            )
+        )
+    );
+
+DROP POLICY "Users can update their schedule workouts" ON schedule_workouts;
+CREATE POLICY "Users can update their own or editable shared schedule workouts" ON schedule_workouts
+    FOR UPDATE USING (
+        EXISTS (
+            SELECT 1 FROM schedule_weeks sw
+            JOIN training_schedules ts ON sw.schedule_id = ts.id
+            WHERE sw.id = schedule_workouts.week_id
+            AND (
+                ts.user_id = auth.uid() OR
+                EXISTS (
+                    SELECT 1 FROM schedule_shares
+                    WHERE schedule_shares.schedule_id = ts.id
+                    AND schedule_shares.shared_with_user_id = auth.uid()
+                    AND schedule_shares.permission_level = 'edit'
+                )
+            )
+        )
+    );
+
+DROP POLICY "Users can insert their schedule workouts" ON schedule_workouts;
+CREATE POLICY "Users can insert workouts for their own or editable shared schedules" ON schedule_workouts
+    FOR INSERT WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM schedule_weeks sw
+            JOIN training_schedules ts ON sw.schedule_id = ts.id
+            WHERE sw.id = schedule_workouts.week_id
+            AND (
+                ts.user_id = auth.uid() OR
+                EXISTS (
+                    SELECT 1 FROM schedule_shares
+                    WHERE schedule_shares.schedule_id = ts.id
+                    AND schedule_shares.shared_with_user_id = auth.uid()
+                    AND schedule_shares.permission_level = 'edit'
+                )
+            )
+        )
+    );
+
+DROP POLICY "Users can delete their schedule workouts" ON schedule_workouts;
+CREATE POLICY "Users can delete workouts from their own or editable shared schedules" ON schedule_workouts
+    FOR DELETE USING (
+        EXISTS (
+            SELECT 1 FROM schedule_weeks sw
+            JOIN training_schedules ts ON sw.schedule_id = ts.id
+            WHERE sw.id = schedule_workouts.week_id
+            AND (
+                ts.user_id = auth.uid() OR
+                EXISTS (
+                    SELECT 1 FROM schedule_shares
+                    WHERE schedule_shares.schedule_id = ts.id
+                    AND schedule_shares.shared_with_user_id = auth.uid()
+                    AND schedule_shares.permission_level = 'edit'
+                )
+            )
+        )
+    );
+
+-- Function to get user by email (for sharing)
+CREATE OR REPLACE FUNCTION get_user_by_email(email_address TEXT)
+RETURNS TABLE(id UUID, email TEXT)
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT au.id, au.email
+  FROM auth.users au
+  WHERE au.email = email_address
+  LIMIT 1;
+END;
+$$ LANGUAGE plpgsql;
