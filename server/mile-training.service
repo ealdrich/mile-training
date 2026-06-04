@@ -1,0 +1,15 @@
+[Unit]
+Description=Mile Training App
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=eric
+WorkingDirectory=/home/eric/mile-training/server
+EnvironmentFile=/home/eric/mile-training/server/.env
+ExecStart=/usr/bin/node index.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -20,8 +20,7 @@ const Auth = ({ onAuthSuccess }) => {
         if (error) {
           setError(error.message);
         } else {
-          alert('Check your email for the confirmation link!');
-          setIsSignUp(false);
+          onAuthSuccess(data.user);
         }
       } else {
         const { data, error } = await signIn(email, password);
@@ -103,33 +102,19 @@ const Auth = ({ onAuthSuccess }) => {
           {isSignUp ? (
             <p>
               Already have an account?{' '}
-              <button
-                type="button"
-                className="toggle-btn"
-                onClick={handleToggleMode}
-              >
+              <button type="button" className="toggle-btn" onClick={handleToggleMode}>
                 Sign In
               </button>
             </p>
           ) : (
             <p>
               Don't have an account?{' '}
-              <button
-                type="button"
-                className="toggle-btn"
-                onClick={handleToggleMode}
-              >
+              <button type="button" className="toggle-btn" onClick={handleToggleMode}>
                 Sign Up
               </button>
             </p>
           )}
         </div>
-
-        {isSignUp && (
-          <div className="signup-info">
-            <p><strong>Note:</strong> You'll need to confirm your email address before you can sign in.</p>
-          </div>
-        )}
       </div>
     </div>
   );

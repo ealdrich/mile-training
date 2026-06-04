@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import WorkoutLibrary from './WorkoutLibrary.js';
 import Auth from './Auth.js';
-import { onAuthStateChange, getCurrentUser, signOut } from './supabase.js';
+import { getCurrentUser, signOut } from './supabase.js';
 import { LogOut, User } from 'lucide-react';
 import './App.css';
 
@@ -10,22 +10,10 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check if user is already logged in
-    const checkUser = async () => {
-      const currentUser = await getCurrentUser();
+    getCurrentUser().then(currentUser => {
       setUser(currentUser);
       setLoading(false);
-    };
-
-    checkUser();
-
-    // Listen for auth state changes
-    const { data: { subscription } } = onAuthStateChange((_event: any, session: any) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
     });
-
-    return () => subscription.unsubscribe();
   }, []);
 
   const handleSignOut = async () => {

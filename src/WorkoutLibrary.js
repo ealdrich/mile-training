@@ -23,8 +23,10 @@ import './WorkoutLibrary.css';
 
 const WorkoutLibrary = ({ user }) => {
   const [workoutLibrary, setWorkoutLibrary] = useState({
-    primary: { name: "Primary/Core Workouts (Tuesdays)", description: "Longer intervals, pace work, and endurance-focused sessions", workouts: [] },
-    secondary: { name: "Secondary/Speed Workouts (Fridays)", description: "Shorter, faster intervals focused on speed and neuromuscular power", workouts: [] }
+    primary: { name: "Mile Workouts", description: "Longer intervals, pace work, and endurance-focused sessions", workouts: [] },
+    secondary: { name: "Speed Workouts", description: "Shorter, faster intervals focused on speed and neuromuscular power", workouts: [] },
+    fiveKTenK: { name: "5k/10k Workouts", description: "Workouts targeting 5k and 10k race fitness", workouts: [] },
+    marathon: { name: "Marathon Workouts", description: "Long aerobic sessions and marathon-pace work", workouts: [] }
   });
   const [loading, setLoading] = useState(true);
 
@@ -65,6 +67,8 @@ const WorkoutLibrary = ({ user }) => {
   const [editingLibraryWorkout, setEditingLibraryWorkout] = useState(null);
   const [workoutVersions, setWorkoutVersions] = useState([]);
   const [showWorkoutVersions, setShowWorkoutVersions] = useState(false);
+  const [expandedSidebarCategory, setExpandedSidebarCategory] = useState(null);
+  const [expandedLibraryCategory, setExpandedLibraryCategory] = useState(null);
 
   // Completed workout editing states
   const [showEditCompletedWorkout, setShowEditCompletedWorkout] = useState(false);
@@ -103,17 +107,29 @@ const WorkoutLibrary = ({ user }) => {
           // Group workouts by category
           const primary = workouts?.filter(w => w.category === 'primary') || [];
           const secondary = workouts?.filter(w => w.category === 'secondary') || [];
+          const fiveKTenK = workouts?.filter(w => w.category === 'fiveKTenK') || [];
+          const marathon = workouts?.filter(w => w.category === 'marathon') || [];
 
           setWorkoutLibrary({
             primary: {
-              name: "Primary/Core Workouts (Tuesdays)",
+              name: "Mile Workouts",
               description: "Longer intervals, pace work, and endurance-focused sessions",
               workouts: primary
             },
             secondary: {
-              name: "Secondary/Speed Workouts (Fridays)",
+              name: "Speed Workouts",
               description: "Shorter, faster intervals focused on speed and neuromuscular power",
               workouts: secondary
+            },
+            fiveKTenK: {
+              name: "5k/10k Workouts",
+              description: "Workouts targeting 5k and 10k race fitness",
+              workouts: fiveKTenK
+            },
+            marathon: {
+              name: "Marathon Workouts",
+              description: "Long aerobic sessions and marathon-pace work",
+              workouts: marathon
             }
           });
         }
@@ -1082,56 +1098,50 @@ const WorkoutLibrary = ({ user }) => {
         onClick={isPickerMode ? handlePickerClick : undefined}
       >
         <div className="workout-header">
+          <div className="workout-nickname">{workout.nickname}</div>
           {!isPickerMode && (
-            <>
-              <div className="workout-actions">
+            <div className="workout-actions">
+              <button
+                onClick={handleInfoClick}
+                className="action-btn info-btn"
+                title="View workout details"
+              >
+                <Info size={14} />
+              </button>
+              <button
+                onClick={handleEditClick}
+                className="action-btn edit-btn"
+                title="Edit workout"
+              >
+                <Edit3 size={14} />
+              </button>
+              {workout.version && workout.version > 1 && (
                 <button
-                  onClick={handleInfoClick}
-                  className="action-btn info-btn"
-                  title="View workout details"
+                  onClick={handleVersionsClick}
+                  className="action-btn versions-btn"
+                  title="View versions"
                 >
-                  <Info size={14} />
+                  v{workout.version}
                 </button>
+              )}
+              {workout.is_custom && (
                 <button
-                  onClick={handleEditClick}
-                  className="action-btn edit-btn"
-                  title="Edit workout"
+                  onClick={handleDeleteClick}
+                  className="action-btn delete-btn"
+                  title="Delete workout"
                 >
-                  <Edit3 size={14} />
+                  <Trash2 size={14} />
                 </button>
-                {workout.version && workout.version > 1 && (
-                  <button
-                    onClick={handleVersionsClick}
-                    className="action-btn versions-btn"
-                    title="View versions"
-                  >
-                    v{workout.version}
-                  </button>
-                )}
-                {workout.is_custom && (
-                  <button
-                    onClick={handleDeleteClick}
-                    className="action-btn delete-btn"
-                    title="Delete workout"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                )}
-              </div>
-            </>
-          )}
-          {lastRun && (
-            <span className="last-run-date">
-              {new Date(lastRun.date).toLocaleDateString()}
-            </span>
+              )}
+            </div>
           )}
         </div>
-        <div className="workout-nickname">{workout.nickname}</div>
         <div className="workout-name">{workout.name}</div>
         <div className="workout-description">{workout.description}</div>
         {lastRun && (
-          <div className="last-rating">
-            Last rating: {lastRun.rating}/10
+          <div className="workout-meta">
+            <span className="last-run-date">{new Date(lastRun.date).toLocaleDateString()}</span>
+            <span className="last-rating">{lastRun.rating}/10</span>
           </div>
         )}
       </div>
@@ -1216,9 +1226,10 @@ const WorkoutLibrary = ({ user }) => {
     <div className="workout-app">
       <div className="app-header">
         <div className="header-content">
+          <img src="/goobs_logo.png" alt="Goobs logo" className="header-logo" />
           <div className="header-text">
-            <h1>Mile Training Inspired by Dan Gruber</h1>
-            <p>Build schedules, track workout history, and export to markdown. (17 total workouts)</p>
+            <h1>Track Workouts Inspired by Dan Gruber</h1>
+            <p>Build schedules, track workout history, and export to markdown.</p>
           </div>
         </div>
       </div>
@@ -1258,16 +1269,34 @@ const WorkoutLibrary = ({ user }) => {
           </div>
 
           <div className="library-grid">
-            {Object.values(workoutLibrary).map((category, categoryIndex) => (
-              <div key={categoryIndex} className="category-card">
-                <h3 className="category-title">{category.name}</h3>
-                <p className="category-description">{category.description}</p>
-
-                <div className="workouts-list">
-                  {category.workouts.map((workout) => (
-                    <LibraryWorkout key={workout.id} workout={workout} />
-                  ))}
+            {Object.entries(workoutLibrary).map(([categoryKey, category]) => (
+              <div key={categoryKey} className="category-card">
+                <div
+                  className="category-card-header"
+                  onClick={() => setExpandedLibraryCategory(
+                    expandedLibraryCategory === categoryKey ? null : categoryKey
+                  )}
+                >
+                  <div className="category-header-text">
+                    <h3 className="category-title">{category.name}</h3>
+                    <p className="category-description">{category.description}</p>
+                  </div>
+                  <span className="category-toggle-icon">
+                    {expandedLibraryCategory === categoryKey ? '▲' : '▼'}
+                  </span>
                 </div>
+
+                {expandedLibraryCategory === categoryKey && (
+                  <div className="workouts-list">
+                    {category.workouts.length === 0 ? (
+                      <p className="library-empty">No workouts yet</p>
+                    ) : (
+                      category.workouts.map((workout) => (
+                        <LibraryWorkout key={workout.id} workout={workout} />
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -1290,18 +1319,32 @@ const WorkoutLibrary = ({ user }) => {
 
             {!sidebarCollapsed && (
               <div className="sidebar-content">
-                {Object.values(workoutLibrary).map((category, categoryIndex) => (
-                  <div key={categoryIndex} className="sidebar-category">
-                    <h4 className="sidebar-category-title">{category.name}</h4>
-                    <div className="sidebar-workouts">
-                      {category.workouts.map((workout) => (
-                        <LibraryWorkout
-                          key={workout.id}
-                          workout={workout}
-                          isDraggable={true}
-                        />
-                      ))}
-                    </div>
+                {Object.entries(workoutLibrary).map(([categoryKey, category]) => (
+                  <div key={categoryKey} className="sidebar-category">
+                    <h4
+                      className="sidebar-category-title sidebar-category-toggle"
+                      onClick={() => setExpandedSidebarCategory(
+                        expandedSidebarCategory === categoryKey ? null : categoryKey
+                      )}
+                    >
+                      <span>{category.name}</span>
+                      <span className="sidebar-toggle-icon">{expandedSidebarCategory === categoryKey ? '▲' : '▼'}</span>
+                    </h4>
+                    {expandedSidebarCategory === categoryKey && (
+                      <div className="sidebar-workouts">
+                        {category.workouts.length === 0 ? (
+                          <p className="sidebar-empty">No workouts yet</p>
+                        ) : (
+                          category.workouts.map((workout) => (
+                            <LibraryWorkout
+                              key={workout.id}
+                              workout={workout}
+                              isDraggable={true}
+                            />
+                          ))
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -2377,8 +2420,10 @@ const WorkoutForm = ({ workout = null, onSubmit, onCancel, isEdit = false }) => 
             value={formData.category}
             onChange={(e) => updateForm('category', e.target.value)}
           >
-            <option value="primary">Primary/Core Workouts</option>
-            <option value="secondary">Secondary/Speed Workouts</option>
+            <option value="primary">Mile Workouts</option>
+            <option value="secondary">Speed Workouts</option>
+            <option value="fiveKTenK">5k/10k Workouts</option>
+            <option value="marathon">Marathon Workouts</option>
           </select>
         </div>
 
