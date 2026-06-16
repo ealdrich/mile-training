@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { getPublicProfile, getPublicSchedules, getPublicHistory, getWorkoutLibrary } from './supabase.js';
 import { Calendar, Clock, Star, Lock, TrendingUp } from 'lucide-react';
-import Analytics from './Analytics.js';
+import Analytics, { computeAlternatingMetrics } from './Analytics.js';
 
 const PublicProfile = ({ userId, currentUser, onSignIn }) => {
   const [profile, setProfile] = useState(null);
@@ -220,17 +220,31 @@ const HistoryList = ({ history, onViewAnalytics, findWorkoutById }) => {
     <div className="public-history">
       {history.map(entry => {
         const workout = findWorkoutById?.(entry.workoutId);
-        const metric = workout ? computePublicMetric(workout, entry.actualTimes) : null;
+        const isAlternating = workout?.target_metric === 'alternating_splits';
+        const metric = workout && !isAlternating ? computePublicMetric(workout, entry.actualTimes) : null;
+        const altMetrics = isAlternating ? computeAlternatingMetrics(entry.actualTimes) : null;
         return (
           <div key={entry.id} className="public-history-card">
             <div className="public-history-top">
               <span className="public-history-name">{entry.workoutName || 'Workout'}</span>
               <span className="public-history-date">{formatDate(entry.date)}</span>
             </div>
-            {metric !== null && (
+            {(metric !== null || altMetrics) && (
               <div className="entry-metric">
-                <span className="entry-metric-value">{formatMetricSeconds(metric)}</span>
-                <span className="entry-metric-label">{workout.target_metric === 'best_split' ? 'Best split' : 'Avg split'}</span>
+                {isAlternating && altMetrics ? (
+                  <>
+                    <span className="entry-metric-value analytics-fast">{formatMetricSeconds(altMetrics.fast)}</span>
+                    <span className="entry-metric-label">Fast avg</span>
+                    <span className="entry-metric-sep">·</span>
+                    <span className="entry-metric-value analytics-slow">{formatMetricSeconds(altMetrics.slow)}</span>
+                    <span className="entry-metric-label">Slow avg</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="entry-metric-value">{formatMetricSeconds(metric)}</span>
+                    <span className="entry-metric-label">{workout.target_metric === 'best_split' ? 'Best split' : 'Avg split'}</span>
+                  </>
+                )}
                 {onViewAnalytics && entry.workoutId && (
                   <button className="entry-analytics-link" onClick={() => onViewAnalytics(entry.workoutId)}>
                     <TrendingUp size={13} /> View analytics

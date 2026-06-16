@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Download, Copy, Edit3, Trash2, Plus, Clock, BarChart3, Save, FileText, Eye, PanelLeft, Info, Share2, Users, Zap, TrendingUp } from 'lucide-react';
-import Analytics, { computeMetric, formatSeconds, metricLabel } from './Analytics.js';
+import Analytics, { computeMetric, computeAlternatingMetrics, formatSeconds, metricLabel } from './Analytics.js';
 import {
   getWorkoutLibrary,
   getTrainingSchedules,
@@ -1750,7 +1750,9 @@ const WorkoutLibrary = ({ user, onSignInRequired }) => {
           <div className="history-list">
             {workoutHistory.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((entry) => {
               const workout = findWorkoutById(entry.workoutId);
-              const metric = computeMetric(workout, entry.actualTimes);
+              const isAlternating = workout?.target_metric === 'alternating_splits';
+              const metric = !isAlternating ? computeMetric(workout, entry.actualTimes) : null;
+              const altMetrics = isAlternating ? computeAlternatingMetrics(entry.actualTimes) : null;
               const label = metricLabel(workout);
               return (
                 <div key={entry.id} className="history-entry">
@@ -1772,10 +1774,22 @@ const WorkoutLibrary = ({ user, onSignInRequired }) => {
                     </div>
                   </div>
 
-                  {metric !== null && (
+                  {(metric !== null || altMetrics) && (
                     <div className="entry-metric">
-                      <span className="entry-metric-value">{formatSeconds(metric)}</span>
-                      <span className="entry-metric-label">{label}</span>
+                      {isAlternating && altMetrics ? (
+                        <>
+                          <span className="entry-metric-value analytics-fast">{formatSeconds(altMetrics.fast)}</span>
+                          <span className="entry-metric-label">Fast avg</span>
+                          <span className="entry-metric-sep">·</span>
+                          <span className="entry-metric-value analytics-slow">{formatSeconds(altMetrics.slow)}</span>
+                          <span className="entry-metric-label">Slow avg</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="entry-metric-value">{formatSeconds(metric)}</span>
+                          <span className="entry-metric-label">{label}</span>
+                        </>
+                      )}
                       {workout?.target_metric && (
                         <button
                           className="entry-analytics-link"

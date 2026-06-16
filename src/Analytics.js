@@ -31,6 +31,7 @@ export function formatSeconds(secs) {
 
 export function computeMetric(workout, times) {
   if (!workout?.target_metric || !times?.length) return null;
+  if (workout.target_metric === 'alternating_splits') return null;
   const parsed = times.map(parseTimeToSeconds).filter(t => t !== null);
   if (!parsed.length) return null;
   if (workout.target_metric === 'average_split') {
@@ -42,10 +43,24 @@ export function computeMetric(workout, times) {
   return null;
 }
 
+// Even indices = fast reps, odd indices = slow reps
+export function computeAlternatingMetrics(times) {
+  if (!times?.length) return null;
+  const parsed = times.map(parseTimeToSeconds);
+  const fast = parsed.filter((_, i) => i % 2 === 0).filter(t => t !== null);
+  const slow = parsed.filter((_, i) => i % 2 === 1).filter(t => t !== null);
+  if (!fast.length && !slow.length) return null;
+  return {
+    fast: fast.length ? fast.reduce((a, b) => a + b, 0) / fast.length : null,
+    slow: slow.length ? slow.reduce((a, b) => a + b, 0) / slow.length : null,
+  };
+}
+
 export function metricLabel(workout) {
   if (!workout?.target_metric) return null;
   if (workout.target_metric === 'average_split') return 'Avg split';
   if (workout.target_metric === 'best_split') return 'Best split';
+  if (workout.target_metric === 'alternating_splits') return 'Fast / Slow avg';
   return workout.target_metric;
 }
 
@@ -54,10 +69,18 @@ export function metricLabel(workout) {
 const CustomTooltip = ({ active, payload }) => {
   if (!active || !payload?.length) return null;
   const d = payload[0].payload;
+  const isAlt = d.fast !== undefined;
   return (
     <div className="analytics-tooltip">
       <div className="analytics-tooltip-date">{new Date(d.ts).toLocaleDateString()}</div>
-      <div className="analytics-tooltip-value">{formatSeconds(d.value)}</div>
+      {isAlt ? (
+        <>
+          <div className="analytics-tooltip-value analytics-fast">Fast: {formatSeconds(d.fast)}</div>
+          <div className="analytics-tooltip-value analytics-slow">Slow: {formatSeconds(d.slow)}</div>
+        </>
+      ) : (
+        <div className="analytics-tooltip-value">{formatSeconds(d.value)}</div>
+      )}
       {d.rating && <div className="analytics-tooltip-rating">Rating: {d.rating}/10</div>}
     </div>
   );
@@ -89,6 +112,7 @@ const Analytics = ({ workoutLibrary, workoutHistory, findWorkoutById, initialWor
   }, [workoutLibrary]);
 
   const selectedWorkout = findWorkoutById(selectedWorkoutId);
+  const isAlternating = selectedWorkout?.target_metric === 'alternating_splits';
 
   // Build chart data points
   const chartData = useMemo(() => {
@@ -96,32 +120,37 @@ const Analytics = ({ workoutLibrary, workoutHistory, findWorkoutById, initialWor
     return workoutHistory
       .filter(e => e.workoutId === selectedWorkoutId && e.actualTimes?.length)
       .map(e => {
+        const ts = new Date(e.date).getTime();
+        if (isAlternating) {
+          const alt = computeAlternatingMetrics(e.actualTimes);
+          if (!alt) return null;
+          return { ts, fast: alt.fast, slow: alt.slow, date: e.date, rating: e.rating, id: e.id };
+        }
         const value = computeMetric(selectedWorkout, e.actualTimes);
-        return {
-          ts: new Date(e.date).getTime(),
-          value,
-          date: e.date,
-          rating: e.rating,
-          id: e.id,
-        };
+        if (value === null) return null;
+        return { ts, value, date: e.date, rating: e.rating, id: e.id };
       })
-      .filter(d => d.value !== null)
+      .filter(Boolean)
       .sort((a, b) => a.ts - b.ts);
-  }, [selectedWorkoutId, workoutHistory, selectedWorkout]);
+  }, [selectedWorkoutId, workoutHistory, selectedWorkout, isAlternating]);
 
   // Sessions list (sorted newest first)
   const sessions = useMemo(() => {
     if (!selectedWorkoutId) return [];
     return workoutHistory
       .filter(e => e.workoutId === selectedWorkoutId)
-      .map(e => ({ ...e, metric: computeMetric(selectedWorkout, e.actualTimes) }))
+      .map(e => ({
+        ...e,
+        metric: !isAlternating ? computeMetric(selectedWorkout, e.actualTimes) : null,
+        altMetrics: isAlternating ? computeAlternatingMetrics(e.actualTimes) : null,
+      }))
       .sort((a, b) => new Date(b.date) - new Date(a.date));
-  }, [selectedWorkoutId, workoutHistory, selectedWorkout]);
+  }, [selectedWorkoutId, workoutHistory, selectedWorkout, isAlternating]);
 
   // Y axis domain with a bit of padding
   const yDomain = useMemo(() => {
     if (!chartData.length) return ['auto', 'auto'];
-    const vals = chartData.map(d => d.value);
+    const vals = chartData.flatMap(d => [d.value, d.fast, d.slow].filter(v => v != null));
     const min = Math.min(...vals);
     const max = Math.max(...vals);
     const pad = (max - min) * 0.15 || 5;
@@ -161,8 +190,14 @@ const Analytics = ({ workoutLibrary, workoutHistory, findWorkoutById, initialWor
           ) : (
             <div className="analytics-chart-wrap">
               <div className="analytics-metric-label">
-                {metricLabel(selectedWorkout)} over time
+                {isAlternating ? 'Fast / Slow avg split over time' : `${metricLabel(selectedWorkout)} over time`}
               </div>
+              {isAlternating && (
+                <div className="analytics-legend">
+                  <span className="analytics-legend-fast">Fast 400s</span>
+                  <span className="analytics-legend-slow">Slow 400s</span>
+                </div>
+              )}
               <ResponsiveContainer width="100%" height={280}>
                 <LineChart data={chartData} margin={{ top: 8, right: 24, left: 8, bottom: 8 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.07)" />
@@ -185,14 +220,14 @@ const Analytics = ({ workoutLibrary, workoutHistory, findWorkoutById, initialWor
                     width={52}
                   />
                   <Tooltip content={<CustomTooltip />} />
-                  <Line
-                    type="monotone"
-                    dataKey="value"
-                    stroke="#6c5ce7"
-                    strokeWidth={2}
-                    dot={{ r: 4, fill: '#6c5ce7', strokeWidth: 0 }}
-                    activeDot={{ r: 6 }}
-                  />
+                  {isAlternating ? (
+                    <>
+                      <Line type="monotone" dataKey="fast" stroke="#6c5ce7" strokeWidth={2} dot={{ r: 4, fill: '#6c5ce7', strokeWidth: 0 }} activeDot={{ r: 6 }} />
+                      <Line type="monotone" dataKey="slow" stroke="#00b894" strokeWidth={2} dot={{ r: 4, fill: '#00b894', strokeWidth: 0 }} activeDot={{ r: 6 }} />
+                    </>
+                  ) : (
+                    <Line type="monotone" dataKey="value" stroke="#6c5ce7" strokeWidth={2} dot={{ r: 4, fill: '#6c5ce7', strokeWidth: 0 }} activeDot={{ r: 6 }} />
+                  )}
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -210,11 +245,20 @@ const Analytics = ({ workoutLibrary, workoutHistory, findWorkoutById, initialWor
                       {new Date(entry.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                     </div>
                     <div className="analytics-session-metric">
-                      {entry.metric !== null
-                        ? <span className="analytics-session-value">{formatSeconds(entry.metric)}</span>
-                        : <span className="analytics-session-no-data">—</span>}
-                      {entry.metric !== null && (
-                        <span className="analytics-session-label">{metricLabel(selectedWorkout)}</span>
+                      {isAlternating ? (
+                        entry.altMetrics ? (
+                          <>
+                            <span className="analytics-session-value analytics-fast">{formatSeconds(entry.altMetrics.fast)}</span>
+                            <span className="analytics-session-label">Fast</span>
+                            <span className="analytics-session-sep">·</span>
+                            <span className="analytics-session-value analytics-slow">{formatSeconds(entry.altMetrics.slow)}</span>
+                            <span className="analytics-session-label">Slow</span>
+                          </>
+                        ) : <span className="analytics-session-no-data">—</span>
+                      ) : (
+                        entry.metric !== null
+                          ? <><span className="analytics-session-value">{formatSeconds(entry.metric)}</span><span className="analytics-session-label">{metricLabel(selectedWorkout)}</span></>
+                          : <span className="analytics-session-no-data">—</span>
                       )}
                     </div>
                     <div className="analytics-session-rating">

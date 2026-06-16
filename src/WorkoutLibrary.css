@@ -2754,3 +2754,57 @@
 .entry-analytics-link:hover {
   background: #f3f0ff;
 }
+
+/* ── Alternating metric colors ──────────────────────────── */
+
+.analytics-fast { color: #6c5ce7; }
+.analytics-slow { color: #00b894; }
+
+.entry-metric-sep {
+  color: #d1d5db;
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* ── Analytics legend ───────────────────────────────────── */
+
+.analytics-legend {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.analytics-legend-fast,
+.analytics-legend-slow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.analytics-legend-fast::before {
+  content: '';
+  display: inline-block;
+  width: 16px;
+  height: 3px;
+  border-radius: 2px;
+  background: #6c5ce7;
+}
+
+.analytics-legend-slow::before {
+  content: '';
+  display: inline-block;
+  width: 16px;
+  height: 3px;
+  border-radius: 2px;
+  background: #00b894;
+}
+
+.analytics-legend-fast { color: #6c5ce7; }
+.analytics-legend-slow { color: #00b894; }
+
+.analytics-session-sep {
+  color: #555;
+  margin: 0 2px;
+}
