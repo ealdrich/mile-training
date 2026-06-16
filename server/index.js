@@ -35,6 +35,9 @@ app.use('/api/workouts',  require('./routes/workouts'))
 app.use('/api/schedules', require('./routes/schedules'))
 app.use('/api/history',   require('./routes/history'))
 app.use('/api/shares',    require('./routes/shares'))
+app.use('/api/strava',    require('./routes/strava'))
+app.use('/api/public',    require('./routes/public'))
+app.use('/api/feedback',  require('./routes/feedback'))
 
 // Serve React build for all non-API routes
 const buildDir = path.join(__dirname, '../build')

@@ -20,13 +20,13 @@ router.get('/', authMiddleware, async (req, res) => {
 })
 
 router.post('/', authMiddleware, async (req, res) => {
-  const { workoutId, date, actualTimes, targetTimes, notes, weather, location, rating } = req.body
+  const { workoutId, date, actualTimes, targetTimes, notes, weather, location, rating, stravaActivityId, stravaActivityName } = req.body
   try {
     const result = await db.query(
       `INSERT INTO workout_history
-         (workout_id, date, actual_times, target_times, notes, weather, location, rating, user_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-      [workoutId, date, actualTimes, targetTimes, notes, weather, location, rating, req.user.id]
+         (workout_id, date, actual_times, target_times, notes, weather, location, rating, user_id, strava_activity_id, strava_activity_name)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+      [workoutId || null, date, actualTimes, targetTimes, notes, weather, location, rating, req.user.id, stravaActivityId || null, stravaActivityName || null]
     )
     res.status(201).json(result.rows[0])
   } catch (err) {

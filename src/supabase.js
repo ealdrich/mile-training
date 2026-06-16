@@ -25,10 +25,10 @@ async function apiFetch(path, options = {}) {
 }
 
 // Auth
-export const signUp = async (email, password) => {
+export const signUp = async (email, password, name = '') => {
   const { data, error } = await apiFetch('/api/auth/signup', {
     method: 'POST',
-    body: JSON.stringify({ email, password })
+    body: JSON.stringify({ email, password, name })
   })
   if (error) return { data: null, error }
   setToken(data.token)
@@ -44,6 +44,9 @@ export const signIn = async (email, password) => {
   setToken(data.token)
   return { data, error: null }
 }
+
+export const updateUserSettings = async (settings) =>
+  apiFetch('/api/auth/settings', { method: 'PUT', body: JSON.stringify(settings) })
 
 export const signOut = async () => {
   clearToken()
@@ -121,6 +124,30 @@ export const removeScheduleShare = async (shareId) =>
   apiFetch(`/api/shares/${shareId}`, { method: 'DELETE' })
 
 export const getSharedSchedules = async () => apiFetch('/api/shares/incoming')
+
+// Strava integration
+export const getStravaStatus = async () => apiFetch('/api/strava/status')
+
+export const getStravaAuthUrl = async () => apiFetch('/api/strava/auth-url')
+
+export const disconnectStrava = async () =>
+  apiFetch('/api/strava/disconnect', { method: 'DELETE' })
+
+export const importStravaActivity = async (activityId) =>
+  apiFetch(`/api/strava/import/${activityId}`)
+
+// Public profile (no auth required)
+export const getPublicProfile = async (userId) =>
+  apiFetch(`/api/public/profile/${userId}`)
+
+export const getPublicSchedules = async (userId) =>
+  apiFetch(`/api/public/schedules/${userId}`)
+
+export const getPublicHistory = async (userId) =>
+  apiFetch(`/api/public/history/${userId}`)
+
+export const searchUsers = async (query) =>
+  apiFetch(`/api/public/search?q=${encodeURIComponent(query)}`)
 
 export const checkSchedulePermissions = async (scheduleId) => {
   const user = await getCurrentUser()

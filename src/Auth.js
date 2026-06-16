@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
 import { signIn, signUp } from './supabase.js';
+import PrivacySettingsModal from './PrivacySettingsModal.js';
 import './Auth.css';
 
-const Auth = ({ onAuthSuccess }) => {
-  const [isSignUp, setIsSignUp] = useState(false);
+const Auth = ({ onAuthSuccess, onCancel, initialMode = 'signin' }) => {
+  const [isSignUp, setIsSignUp] = useState(initialMode === 'signup');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [pendingUser, setPendingUser] = useState(null);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -16,11 +19,11 @@ const Auth = ({ onAuthSuccess }) => {
 
     try {
       if (isSignUp) {
-        const { data, error } = await signUp(email, password);
+        const { data, error } = await signUp(email, password, name);
         if (error) {
           setError(error.message);
         } else {
-          onAuthSuccess(data.user);
+          setPendingUser(data.user);
         }
       } else {
         const { data, error } = await signIn(email, password);
@@ -42,7 +45,18 @@ const Auth = ({ onAuthSuccess }) => {
     setError('');
     setEmail('');
     setPassword('');
+    setName('');
   };
+
+  if (pendingUser) {
+    return (
+      <PrivacySettingsModal
+        isNewUser
+        user={pendingUser}
+        onClose={(settings) => onAuthSuccess({ ...pendingUser, ...settings })}
+      />
+    );
+  }
 
   return (
     <div className="auth-container">
@@ -50,16 +64,30 @@ const Auth = ({ onAuthSuccess }) => {
         <div className="auth-header">
           <div className="app-logo">
             <img
-              src={`${process.env.PUBLIC_URL}/grubes_logo.png`}
-              alt="Grube's GOOBS"
+              src={`${process.env.PUBLIC_URL}/goobs_logo.png`}
+              alt="Goobs"
               className="logo-image"
             />
           </div>
-          <h1>Mile Training with Dan Gruber</h1>
+          <h1>Track Workouts Inspired by Dan Gruber</h1>
           <p>{isSignUp ? 'Create your account' : 'Sign in to continue'}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="auth-form">
+          {isSignUp && (
+            <div className="form-field">
+              <label htmlFor="name">Name <span className="field-optional">(optional)</span></label>
+              <input
+                id="name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Your name"
+                autoComplete="name"
+              />
+            </div>
+          )}
+
           <div className="form-field">
             <label htmlFor="email">Email</label>
             <input
@@ -115,6 +143,14 @@ const Auth = ({ onAuthSuccess }) => {
             </p>
           )}
         </div>
+
+        {onCancel && (
+          <div className="auth-cancel">
+            <button type="button" className="toggle-btn" onClick={onCancel}>
+              Continue browsing as guest
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

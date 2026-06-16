@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Download, Copy, Edit3, Trash2, Plus, Clock, BarChart3, Save, FileText, Eye, PanelLeft, Info, Share2, Users } from 'lucide-react';
+import { Calendar, Download, Copy, Edit3, Trash2, Plus, Clock, BarChart3, Save, FileText, Eye, PanelLeft, Info, Share2, Users, Zap, TrendingUp } from 'lucide-react';
+import Analytics, { computeMetric, formatSeconds, metricLabel } from './Analytics.js';
 import {
   getWorkoutLibrary,
   getTrainingSchedules,
@@ -17,11 +18,14 @@ import {
   getScheduleShares,
   removeScheduleShare,
   getSharedSchedules,
-  checkSchedulePermissions
+  getStravaStatus,
+  getStravaAuthUrl,
+  importStravaActivity,
+  searchUsers
 } from './supabase.js';
 import './WorkoutLibrary.css';
 
-const WorkoutLibrary = ({ user }) => {
+const WorkoutLibrary = ({ user, onSignInRequired }) => {
   const [workoutLibrary, setWorkoutLibrary] = useState({
     primary: { name: "Mile Workouts", description: "Longer intervals, pace work, and endurance-focused sessions", workouts: [] },
     secondary: { name: "Speed Workouts", description: "Shorter, faster intervals focused on speed and neuromuscular power", workouts: [] },
@@ -75,11 +79,24 @@ const WorkoutLibrary = ({ user }) => {
   const [editingCompletedWorkout, setEditingCompletedWorkout] = useState(null);
   const [editingHistoryEntry, setEditingHistoryEntry] = useState(null);
 
+  // Strava import states
+  const [showStravaImport, setShowStravaImport] = useState(false);
+  const [stravaConnected, setStravaConnected] = useState(false);
+
   // Schedule sharing states
   const [showShareModal, setShowShareModal] = useState(false);
   const [sharingSchedule, setSharingSchedule] = useState(null);
   const [scheduleShares, setScheduleShares] = useState([]);
   const [sharedSchedules, setSharedSchedules] = useState([]);
+
+  // Profiles search state
+  const [profileQuery, setProfileQuery] = useState('');
+  const [profileResults, setProfileResults] = useState([]);
+  const [profileSearching, setProfileSearching] = useState(false);
+  const [profileSearched, setProfileSearched] = useState(false);
+
+  // Analytics state — default to Junior Classic
+  const [analyticsWorkoutId, setAnalyticsWorkoutId] = useState('fk8');
   const [historyForm, setHistoryForm] = useState({
     workoutId: '',
     date: new Date().toISOString().split('T')[0],
@@ -93,6 +110,16 @@ const WorkoutLibrary = ({ user }) => {
 
   // Load data from Supabase on component mount
   useEffect(() => {
+    // Handle Strava OAuth callback query params
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('strava_connected') === '1') {
+      setStravaConnected(true);
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (urlParams.get('strava_error')) {
+      alert(`Strava connection failed: ${urlParams.get('strava_error').replace(/_/g, ' ')}`);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
     const loadData = async () => {
       try {
         setLoading(true);
@@ -134,6 +161,8 @@ const WorkoutLibrary = ({ user }) => {
           });
         }
 
+        if (!user) { setLoading(false); return; }
+
         // Load workout history
         const { data: history, error: historyError } = await getWorkoutHistory();
         if (historyError) {
@@ -150,7 +179,9 @@ const WorkoutLibrary = ({ user }) => {
             notes: entry.notes || '',
             weather: entry.weather || '',
             location: entry.location || '',
-            rating: entry.rating || 5
+            rating: entry.rating || 5,
+            stravaActivityId: entry.strava_activity_id || null,
+            stravaActivityName: entry.strava_activity_name || null
           }));
           setWorkoutHistory(transformedHistory);
         }
@@ -240,6 +271,10 @@ const WorkoutLibrary = ({ user }) => {
           setSharedSchedules(transformedShared);
           console.log('Set shared schedules:', transformedShared.length);
         }
+
+        // Check Strava connection status
+        const { data: stravaStatus } = await getStravaStatus();
+        if (stravaStatus?.connected) setStravaConnected(true);
 
       } catch (err) {
         console.error('Error loading data:', err);
@@ -487,7 +522,9 @@ const WorkoutLibrary = ({ user }) => {
         notes: data[0].notes || '',
         weather: data[0].weather || '',
         location: data[0].location || '',
-        rating: data[0].rating || 5
+        rating: data[0].rating || 5,
+        stravaActivityId: data[0].strava_activity_id || null,
+        stravaActivityName: data[0].strava_activity_name || null
       };
       setWorkoutHistory(prev => [transformedEntry, ...prev]);
 
@@ -606,7 +643,9 @@ const WorkoutLibrary = ({ user }) => {
         notes: data[0].notes || '',
         weather: data[0].weather || '',
         location: data[0].location || '',
-        rating: data[0].rating || 5
+        rating: data[0].rating || 5,
+        stravaActivityId: data[0].strava_activity_id || null,
+        stravaActivityName: data[0].strava_activity_name || null
       };
 
       setWorkoutHistory(prev => [transformedEntry, ...prev]);
@@ -1108,30 +1147,34 @@ const WorkoutLibrary = ({ user }) => {
               >
                 <Info size={14} />
               </button>
-              <button
-                onClick={handleEditClick}
-                className="action-btn edit-btn"
-                title="Edit workout"
-              >
-                <Edit3 size={14} />
-              </button>
-              {workout.version && workout.version > 1 && (
-                <button
-                  onClick={handleVersionsClick}
-                  className="action-btn versions-btn"
-                  title="View versions"
-                >
-                  v{workout.version}
-                </button>
-              )}
-              {workout.is_custom && (
-                <button
-                  onClick={handleDeleteClick}
-                  className="action-btn delete-btn"
-                  title="Delete workout"
-                >
-                  <Trash2 size={14} />
-                </button>
+              {user && (
+                <>
+                  <button
+                    onClick={handleEditClick}
+                    className="action-btn edit-btn"
+                    title="Edit workout"
+                  >
+                    <Edit3 size={14} />
+                  </button>
+                  {workout.version && workout.version > 1 && (
+                    <button
+                      onClick={handleVersionsClick}
+                      className="action-btn versions-btn"
+                      title="View versions"
+                    >
+                      v{workout.version}
+                    </button>
+                  )}
+                  {workout.is_custom && (
+                    <button
+                      onClick={handleDeleteClick}
+                      className="action-btn delete-btn"
+                      title="Delete workout"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -1237,9 +1280,13 @@ const WorkoutLibrary = ({ user }) => {
       <div className="tab-navigation">
         {[
           { id: 'library', label: 'Workout Library', icon: Calendar },
-          { id: 'builder', label: 'Training Schedule Builder', icon: BarChart3 },
-          { id: 'schedules', label: 'Training Schedules', icon: FileText },
-          { id: 'history', label: 'Workout History', icon: Clock }
+          ...(user ? [
+            { id: 'builder', label: 'Training Schedule Builder', icon: BarChart3 },
+            { id: 'schedules', label: 'Training Schedules', icon: FileText },
+            { id: 'history', label: 'Workout History', icon: Clock },
+            { id: 'analytics', label: 'Analytics', icon: TrendingUp },
+          ] : []),
+          { id: 'profiles', label: 'Athletes', icon: Users },
         ].map(tab => {
           const Icon = tab.icon;
           return (
@@ -1259,13 +1306,15 @@ const WorkoutLibrary = ({ user }) => {
         <div className="library-container">
           <div className="library-header">
             <h2>Workout Library</h2>
-            <button
-              onClick={openCreateWorkout}
-              className="create-workout-btn"
-            >
-              <Plus size={16} />
-              Create New Workout
-            </button>
+            {user && (
+              <button
+                onClick={openCreateWorkout}
+                className="create-workout-btn"
+              >
+                <Plus size={16} />
+                Create New Workout
+              </button>
+            )}
           </div>
 
           <div className="library-grid">
@@ -1682,6 +1731,13 @@ const WorkoutLibrary = ({ user }) => {
                 Export to Markdown
               </button>
               <button
+                onClick={() => setShowStravaImport(true)}
+                className="strava-import-btn"
+              >
+                <Zap size={16} />
+                Import from Strava
+              </button>
+              <button
                 onClick={() => setShowAddHistory(true)}
                 className="add-entry-btn"
               >
@@ -1694,18 +1750,42 @@ const WorkoutLibrary = ({ user }) => {
           <div className="history-list">
             {workoutHistory.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((entry) => {
               const workout = findWorkoutById(entry.workoutId);
+              const metric = computeMetric(workout, entry.actualTimes);
+              const label = metricLabel(workout);
               return (
                 <div key={entry.id} className="history-entry">
                   <div className="entry-header">
                     <div className="entry-workout">
-                      <h3>{workout?.nickname || 'Unknown Workout'}</h3>
-                      <p>{workout?.name}</p>
+                      <h3>
+                        {workout?.nickname || entry.stravaActivityName || 'Unknown Workout'}
+                        {entry.stravaActivityId && (
+                          <span className="strava-badge" title="Imported from Strava">
+                            <Zap size={12} /> Strava
+                          </span>
+                        )}
+                      </h3>
+                      <p>{workout?.name || (entry.stravaActivityId ? 'Strava Activity' : '')}</p>
                     </div>
                     <div className="entry-meta">
                       <div className="entry-date">{new Date(entry.date).toLocaleDateString()}</div>
                       <div className="entry-rating">Rating: {entry.rating}/10</div>
                     </div>
                   </div>
+
+                  {metric !== null && (
+                    <div className="entry-metric">
+                      <span className="entry-metric-value">{formatSeconds(metric)}</span>
+                      <span className="entry-metric-label">{label}</span>
+                      {workout?.target_metric && (
+                        <button
+                          className="entry-analytics-link"
+                          onClick={() => { setAnalyticsWorkoutId(entry.workoutId); setActiveTab('analytics'); }}
+                        >
+                          <TrendingUp size={13} /> View analytics
+                        </button>
+                      )}
+                    </div>
+                  )}
 
                   {entry.actualTimes.length > 0 && (
                     <div className="entry-times">
@@ -1729,6 +1809,71 @@ const WorkoutLibrary = ({ user }) => {
               );
             })}
           </div>
+        </div>
+      )}
+
+      {activeTab === 'analytics' && (
+        <Analytics
+          workoutLibrary={workoutLibrary}
+          workoutHistory={workoutHistory}
+          findWorkoutById={findWorkoutById}
+          initialWorkoutId={analyticsWorkoutId}
+        />
+      )}
+
+      {activeTab === 'profiles' && (
+        <div className="profiles-container">
+          <div className="profiles-header">
+            <h2>Find Athletes</h2>
+            <p>Search for users who have made their training plans or workout history public.</p>
+          </div>
+          <form
+            className="profile-search-form"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (!profileQuery.trim()) return;
+              setProfileSearching(true);
+              setProfileSearched(true);
+              const { data } = await searchUsers(profileQuery.trim());
+              setProfileResults(data || []);
+              setProfileSearching(false);
+            }}
+          >
+            <input
+              type="text"
+              value={profileQuery}
+              onChange={e => setProfileQuery(e.target.value)}
+              placeholder="Search by email…"
+              className="profile-search-input"
+            />
+            <button type="submit" className="profile-search-btn" disabled={profileSearching}>
+              {profileSearching ? 'Searching…' : 'Search'}
+            </button>
+          </form>
+          {profileSearched && !profileSearching && (
+            profileResults.length === 0
+              ? <div className="profiles-empty">No public profiles found for "{profileQuery}".</div>
+              : <div className="profile-results">
+                  {profileResults.map(u => (
+                    <a key={u.id} href={`/profile/${u.id}`} className="profile-result-card">
+                      <div className="profile-result-name">
+                        {u.displayName || u.email}
+                        {u.displayName && <span className="profile-result-email-sub">{u.email}</span>}
+                      </div>
+                      <div className="profile-result-badges">
+                        {u.schedulePublic && <span className="profile-badge">Training Plan</span>}
+                        {u.historyPublic && <span className="profile-badge">Workout History</span>}
+                      </div>
+                    </a>
+                  ))}
+                </div>
+          )}
+          {!user && (
+            <div className="profiles-guest-cta">
+              <p>Want to share your own training?</p>
+              <button className="sign-up-cta-btn" onClick={onSignInRequired}>Create a free account</button>
+            </div>
+          )}
         </div>
       )}
 
@@ -2097,6 +2242,47 @@ const WorkoutLibrary = ({ user }) => {
               historyEntry={editingHistoryEntry}
               onSubmit={handleEditCompletedWorkout}
               onCancel={() => setShowEditCompletedWorkout(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Strava Import Modal */}
+      {showStravaImport && (
+        <div className="modal-overlay" onClick={() => setShowStravaImport(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Import from Strava</h3>
+              <button onClick={() => setShowStravaImport(false)} className="modal-close">✕</button>
+            </div>
+            <StravaImportModal
+              workoutLibrary={workoutLibrary}
+              stravaConnected={stravaConnected}
+              onConnected={() => setStravaConnected(true)}
+              onImport={async (entry) => {
+                try {
+                  const { data, error } = await saveWorkoutHistory(entry);
+                  if (error) return false;
+                  const saved = {
+                    id: data[0]?.id || data.id,
+                    workoutId: (data[0] || data).workout_id,
+                    date: (data[0] || data).date,
+                    actualTimes: (data[0] || data).actual_times || [],
+                    targetTimes: (data[0] || data).target_times || [],
+                    notes: (data[0] || data).notes || '',
+                    weather: (data[0] || data).weather || '',
+                    location: (data[0] || data).location || '',
+                    rating: (data[0] || data).rating || 5,
+                    stravaActivityId: (data[0] || data).strava_activity_id || null,
+                    stravaActivityName: (data[0] || data).strava_activity_name || null
+                  };
+                  setWorkoutHistory(prev => [saved, ...prev]);
+                  return true;
+                } catch (err) {
+                  return false;
+                }
+              }}
+              onClose={() => setShowStravaImport(false)}
             />
           </div>
         </div>
@@ -2639,6 +2825,406 @@ const CompletedWorkoutEditForm = ({ historyEntry, onSubmit, onCancel }) => {
       </div>
     </div>
   );
+};
+
+const StravaImportModal = ({ workoutLibrary, stravaConnected, onConnected, onImport, onClose }) => {
+  const [step, setStep] = useState(stravaConnected ? 'input' : 'connect');
+
+  // Input step
+  const [rawInput, setRawInput] = useState('');
+  const [preSelectedWorkoutId, setPreSelectedWorkoutId] = useState('');
+  const [fetchError, setFetchError] = useState('');
+
+  // Fetching step
+  const [fetchProgress, setFetchProgress] = useState({ done: 0, total: 0 });
+
+  // Confirm step
+  const [pendingActivities, setPendingActivities] = useState([]);
+  const [failedIds, setFailedIds] = useState([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [selectedWorkoutId, setSelectedWorkoutId] = useState('');
+  const [confirmForm, setConfirmForm] = useState({
+    rating: 5, notes: '', weather: '', location: '', actualTimes: '', targetTimes: ''
+  });
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState('');
+  const [savedCount, setSavedCount] = useState(0);
+
+  const allWorkouts = Object.values(workoutLibrary).flatMap(cat => cat.workouts);
+
+  const parseIds = (input) =>
+    input.split(/[\n,]+/).map(s => s.trim().replace(/^.*activities\//, '')).filter(s => /^\d+$/.test(s));
+
+  const parsedIds = parseIds(rawInput);
+
+  const handleConnect = async () => {
+    const { data, error } = await getStravaAuthUrl();
+    if (error) { alert('Failed to get Strava auth URL. Is Strava configured on the server?'); return; }
+    window.location.href = data.url;
+  };
+
+  const initConfirm = ({ activity, matches }) => {
+    setSelectedWorkoutId(
+      preSelectedWorkoutId
+        ? preSelectedWorkoutId
+        : (matches[0]?.matchScore >= 40 ? matches[0].id : '')
+    );
+    setConfirmForm({ rating: 5, notes: activity.description || '', weather: '', location: '', actualTimes: '', targetTimes: '' });
+    setImportError('');
+  };
+
+  const handleFetch = async () => {
+    if (parsedIds.length === 0) { setFetchError('Enter at least one valid Strava activity ID'); return; }
+    setStep('fetching');
+    setFetchError('');
+    setFetchProgress({ done: 0, total: parsedIds.length });
+
+    const results = [];
+    const failed = [];
+    for (const id of parsedIds) {
+      const { data, error } = await importStravaActivity(id);
+      if (error) {
+        if (error.message === 'Strava not connected') { setStep('connect'); return; }
+        failed.push(id);
+      } else {
+        results.push({ activity: data.activity, matches: data.matches || [] });
+      }
+      setFetchProgress(p => ({ ...p, done: p.done + 1 }));
+    }
+
+    setFailedIds(failed);
+    if (results.length === 0) {
+      setFetchError('Failed to fetch all activities. Check the IDs and try again.');
+      setStep('input');
+      return;
+    }
+    setPendingActivities(results);
+    setCurrentIndex(0);
+    setSavedCount(0);
+    initConfirm(results[0]);
+    setStep('confirm');
+  };
+
+  const handleImport = async () => {
+    const { activity } = pendingActivities[currentIndex];
+    setImporting(true);
+    setImportError('');
+    const success = await onImport({
+      workoutId: selectedWorkoutId || null,
+      date: activity.date,
+      actualTimes: confirmForm.actualTimes.split(',').map(t => t.trim()).filter(Boolean),
+      targetTimes: confirmForm.targetTimes.split(',').map(t => t.trim()).filter(Boolean),
+      notes: confirmForm.notes,
+      weather: confirmForm.weather,
+      location: confirmForm.location,
+      rating: parseInt(confirmForm.rating),
+      stravaActivityId: activity.stravaId,
+      stravaActivityName: activity.name,
+    });
+    setImporting(false);
+    if (!success) { setImportError('Failed to save. Please try again.'); return; }
+    setSavedCount(n => n + 1);
+    advance();
+  };
+
+  const advance = () => {
+    const next = currentIndex + 1;
+    if (next >= pendingActivities.length) {
+      setStep('done');
+    } else {
+      setCurrentIndex(next);
+      initConfirm(pendingActivities[next]);
+    }
+  };
+
+  const formatDistance = (m) => {
+    const mi = m / 1609.34;
+    return mi >= 0.5 ? `${mi.toFixed(2)} mi` : `${m}m`;
+  };
+  const formatTime = (s) => {
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    return h > 0
+      ? `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`
+      : `${m}:${String(sec).padStart(2,'0')}`;
+  };
+
+  if (step === 'connect') return (
+    <div className="strava-import-modal">
+      <div className="strava-connect-section">
+        <div className="strava-logo-row">
+          <Zap size={32} className="strava-icon" />
+          <span>Connect your Strava account to import workouts directly.</span>
+        </div>
+        <ol className="strava-setup-steps">
+          <li>Click <strong>Connect Strava</strong> below</li>
+          <li>Authorize the app on Strava</li>
+          <li>You'll be redirected back here</li>
+        </ol>
+        <p className="strava-note">
+          <strong>Note:</strong> Strava must be configured by the server admin first.
+          See server <code>.env</code> for <code>STRAVA_CLIENT_ID</code> / <code>STRAVA_CLIENT_SECRET</code>.
+        </p>
+      </div>
+      <div className="modal-footer">
+        <button onClick={onClose} className="cancel-btn">Cancel</button>
+        <button onClick={handleConnect} className="submit-btn strava-connect-btn">
+          <Zap size={16} /> Connect Strava
+        </button>
+      </div>
+    </div>
+  );
+
+  if (step === 'input') return (
+    <div className="strava-import-modal">
+      <div className="form-container">
+        <div className="form-field">
+          <label>Strava Activity IDs or URLs</label>
+          <textarea
+            rows={4}
+            value={rawInput}
+            onChange={e => { setRawInput(e.target.value); setFetchError(''); }}
+            placeholder={"14123456789\n14123456790\nor strava.com/activities/14123456789\n\nComma or newline separated"}
+            style={{ resize: 'vertical' }}
+          />
+          {parsedIds.length > 0 && (
+            <p className="field-hint">
+              {parsedIds.length} activity ID{parsedIds.length !== 1 ? 's' : ''} found
+            </p>
+          )}
+          {fetchError && <div className="field-error">{fetchError}</div>}
+        </div>
+
+        <div className="form-field">
+          <label>Workout type <span className="field-optional">(optional — skip to auto-detect)</span></label>
+          <select
+            value={preSelectedWorkoutId}
+            onChange={e => setPreSelectedWorkoutId(e.target.value)}
+          >
+            <option value="">— Auto-detect from activity —</option>
+            {Object.entries(workoutLibrary).map(([key, cat]) =>
+              cat.workouts.length > 0 && (
+                <optgroup key={key} label={cat.name}>
+                  {cat.workouts.map(w => (
+                    <option key={w.id} value={w.id}>{w.nickname}</option>
+                  ))}
+                </optgroup>
+              )
+            )}
+          </select>
+          <p className="field-hint">
+            {preSelectedWorkoutId
+              ? 'All imported activities will be matched to this workout.'
+              : 'Activity structure will be used to suggest the best match, which you can override.'}
+          </p>
+        </div>
+      </div>
+      <div className="modal-footer">
+        <button onClick={onClose} className="cancel-btn">Cancel</button>
+        <button onClick={handleFetch} disabled={parsedIds.length === 0} className="submit-btn">
+          Fetch {parsedIds.length > 1 ? `${parsedIds.length} Activities` : 'Activity'} →
+        </button>
+      </div>
+    </div>
+  );
+
+  if (step === 'fetching') return (
+    <div className="strava-import-modal">
+      <div className="strava-fetching">
+        <Zap size={28} className="strava-icon fetching-pulse" />
+        <div className="fetching-text">
+          Fetching activity {fetchProgress.done + 1} of {fetchProgress.total}…
+        </div>
+        <div className="fetch-progress-bar">
+          <div
+            className="fetch-progress-fill"
+            style={{ width: `${(fetchProgress.done / fetchProgress.total) * 100}%` }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+
+  if (step === 'confirm') {
+    const current = pendingActivities[currentIndex];
+    const { activity, matches } = current;
+    const sigLaps = activity.laps?.filter(l => l.distance >= 150) || [];
+    const isLast = currentIndex === pendingActivities.length - 1;
+    const preSelected = preSelectedWorkoutId
+      ? allWorkouts.find(w => w.id === preSelectedWorkoutId)
+      : null;
+
+    return (
+      <div className="strava-import-modal">
+        {pendingActivities.length > 1 && (
+          <div className="batch-progress">
+            Activity {currentIndex + 1} of {pendingActivities.length}
+            {savedCount > 0 && <span className="batch-saved"> · {savedCount} saved</span>}
+          </div>
+        )}
+
+        <div className="strava-activity-summary">
+          <div className="strava-activity-name">{activity.name}</div>
+          <div className="strava-activity-meta">
+            <span>{activity.date}</span>
+            <span>·</span>
+            <span>{formatDistance(activity.distance)}</span>
+            <span>·</span>
+            <span>{formatTime(activity.movingTime)}</span>
+            {activity.lapCount > 0 && <><span>·</span><span>{activity.lapCount} laps</span></>}
+          </div>
+          {sigLaps.length > 0 && (
+            <div className="strava-laps-preview">
+              <div className="laps-label">Laps:</div>
+              <div className="laps-list">
+                {sigLaps.slice(0, 10).map((lap, i) => (
+                  <span key={i} className="lap-chip">
+                    {formatDistance(lap.distance)} @ {lap.pacePerMile}/mi
+                  </span>
+                ))}
+                {sigLaps.length > 10 && <span className="lap-chip muted">+{sigLaps.length - 10} more</span>}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="form-container">
+          <div className="form-field">
+            {preSelected ? (
+              <>
+                <label>Workout</label>
+                <div className="pre-selected-workout">
+                  <span className="pre-selected-name">{preSelected.nickname}</span>
+                  <span className="pre-selected-sub">{preSelected.name}</span>
+                  <button
+                    type="button"
+                    className="change-workout-btn"
+                    onClick={() => setPreSelectedWorkoutId('')}
+                  >
+                    Change
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <label>Match to Library Workout</label>
+                <select value={selectedWorkoutId} onChange={e => setSelectedWorkoutId(e.target.value)}>
+                  <option value="">— No match / skip —</option>
+                  {matches.length > 0 && (
+                    <optgroup label="Suggested matches">
+                      {matches.map(m => (
+                        <option key={m.id} value={m.id}>
+                          {m.nickname} — {m.matchScore}% match
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  <optgroup label="All workouts">
+                    {allWorkouts.filter(w => !matches.find(m => m.id === w.id))
+                      .map(w => <option key={w.id} value={w.id}>{w.nickname}</option>)}
+                  </optgroup>
+                </select>
+                {matches.length === 0 && (
+                  <p className="field-hint">No strong matches found — select manually or leave blank.</p>
+                )}
+              </>
+            )}
+          </div>
+
+          <div className="form-field">
+            <label>Actual Times <span className="field-optional">(comma separated)</span></label>
+            <input
+              type="text"
+              value={confirmForm.actualTimes}
+              onChange={e => setConfirmForm(f => ({ ...f, actualTimes: e.target.value }))}
+              placeholder="e.g. 3:12, 3:15, 3:10"
+            />
+          </div>
+
+          <div className="form-field">
+            <label>Target Times <span className="field-optional">(comma separated)</span></label>
+            <input
+              type="text"
+              value={confirmForm.targetTimes}
+              onChange={e => setConfirmForm(f => ({ ...f, targetTimes: e.target.value }))}
+              placeholder="e.g. 3:10, 3:10, 3:10"
+            />
+          </div>
+
+          <div className="form-field">
+            <label>Notes</label>
+            <textarea
+              value={confirmForm.notes}
+              onChange={e => setConfirmForm(f => ({ ...f, notes: e.target.value }))}
+              rows={2}
+            />
+          </div>
+
+          <div className="form-row">
+            <div className="form-field">
+              <label>Weather</label>
+              <input
+                type="text"
+                value={confirmForm.weather}
+                onChange={e => setConfirmForm(f => ({ ...f, weather: e.target.value }))}
+                placeholder="Cool, windy"
+              />
+            </div>
+            <div className="form-field">
+              <label>Location</label>
+              <input
+                type="text"
+                value={confirmForm.location}
+                onChange={e => setConfirmForm(f => ({ ...f, location: e.target.value }))}
+                placeholder="Track, Armory"
+              />
+            </div>
+          </div>
+
+          <div className="form-field">
+            <label>Rating (1–10)</label>
+            <input
+              type="number" min="1" max="10"
+              value={confirmForm.rating}
+              onChange={e => setConfirmForm(f => ({ ...f, rating: e.target.value }))}
+            />
+          </div>
+
+          {importError && <div className="field-error">{importError}</div>}
+        </div>
+
+        <div className="modal-footer">
+          <button onClick={advance} className="cancel-btn" disabled={importing}>
+            Skip {!isLast && '→'}
+          </button>
+          <button onClick={handleImport} disabled={importing} className="submit-btn">
+            <Zap size={16} />
+            {importing ? 'Saving…' : isLast ? 'Import Workout' : 'Import & Next →'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === 'done') return (
+    <div className="strava-import-modal">
+      <div className="strava-done">
+        <div className="strava-done-count">
+          {savedCount} workout{savedCount !== 1 ? 's' : ''} imported
+        </div>
+        {failedIds.length > 0 && (
+          <div className="strava-done-failed">
+            Could not fetch {failedIds.length} activit{failedIds.length !== 1 ? 'ies' : 'y'}:{' '}
+            <code>{failedIds.join(', ')}</code>
+          </div>
+        )}
+      </div>
+      <div className="modal-footer">
+        <button onClick={onClose} className="submit-btn">Done</button>
+      </div>
+    </div>
+  );
+
+  return null;
 };
 
 const ScheduleShareModal = ({ schedule, shares, onShare, onRemoveShare, onClose }) => {
